@@ -1397,7 +1397,15 @@ restEl.addEventListener('click',e=>{
 });
 
 boot();
-if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  navigator.serviceWorker.addEventListener('message',e=>{
+    if(e.data!=='workout-log-updated')return;
+    const b=document.getElementById('banner');
+    b.innerHTML='A new version of Workout Log is ready. <button class="btn sm primary" id="upd" style="margin-left:8px">Reload</button>';b.hidden=false;
+    document.getElementById('upd').onclick=()=>{flushAll();setTimeout(()=>location.reload(),300)};
+  });
+}
 })();
 
 </script>
