@@ -969,9 +969,9 @@ function progressChart(rows){
   let g='';
   ticks.forEach(v=>{g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(v).toFixed(1)+'" y2="'+Y(v).toFixed(1)+'" stroke="#2a2e33" stroke-width="1"/><text x="'+(L-6)+'" y="'+(Y(v)+4).toFixed(1)+'" text-anchor="end" font-size="12" fill="#9aa0a8">'+Math.round(v)+'</text>'});
   const line=pts.map((p,i)=>X(i).toFixed(1)+','+Y(p.e).toFixed(1)).join(' ');
-  g+='<polyline points="'+line+'" fill="none" stroke="#c8f169" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  g+='<polyline points="'+line+'" fill="none" stroke="#A3B4A2" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
   pts.forEach((p,i)=>{const lab=fmtDate(p.date)+': '+p.w+' '+u+' × '+p.r+' (est. 1-rep max '+Math.round(p.e)+' '+u+')';
-    g+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(p.e).toFixed(1)+'" r="4" fill="#c8f169" stroke="#16181b" stroke-width="2"/><circle cx="'+X(i).toFixed(1)+'" cy="'+Y(p.e).toFixed(1)+'" r="14" fill="transparent" tabindex="0" data-tip="'+esc(lab)+'"><title>'+esc(lab)+'</title></circle>'});
+    g+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(p.e).toFixed(1)+'" r="4" fill="#A3B4A2" stroke="#16181b" stroke-width="2"/><circle cx="'+X(i).toFixed(1)+'" cy="'+Y(p.e).toFixed(1)+'" r="14" fill="transparent" tabindex="0" data-tip="'+esc(lab)+'"><title>'+esc(lab)+'</title></circle>'});
   const d0=new Date(pts[0].date).toLocaleDateString(undefined,{day:'numeric',month:'short'}),d1=new Date(pts[pts.length-1].date).toLocaleDateString(undefined,{day:'numeric',month:'short'});
   g+='<text x="'+L+'" y="'+(H-6)+'" font-size="12" fill="#9aa0a8">'+esc(d0)+'</text><text x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end" font-size="12" fill="#9aa0a8">'+esc(d1)+'</text>';
   const ch=Math.round((pts[pts.length-1].e-pts[0].e)/pts[0].e*100);
