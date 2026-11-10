@@ -289,7 +289,7 @@ function snapshotTemplate(name,id){const p=S.program;return{id:id||('t'+nid()),n
 const tplByName=n=>Object.values(S.templates).find(t=>norm(t.name)===norm(n));
 function loadTemplate(t){
   const p=S.program,src=clone(t);
-  Object.assign(p.lib,src.program.lib);
+  const oldLib=clone(p.lib);Object.assign(p.lib,src.program.lib);keepVideos(oldLib);
   p.days=src.program.days;p.length=src.program.length;p.unit=src.program.unit;p.cycle.week=clamp(p.cycle.week,1,p.length);
   S.weeks=src.weeks;saveProgram(0);saveWeeks(Object.keys(S.weeks).map(Number));
 }
@@ -1014,10 +1014,18 @@ function importProgramme(){
   }
   saveProgram(0);saveWeeks(list);
 }
+function keepVideos(oldLib){
+  const byName={};Object.values(oldLib||{}).forEach(x=>{byName[norm(x.name)]=x});
+  Object.values(S.program.lib).forEach(x=>{const o=(oldLib||{})[x.id]||byName[norm(x.name)];if(!o)return;
+    if(!x.video&&o.video)x.video=o.video;
+    x.subs.forEach(z=>{if(z.video)return;const m=o.subs.find(q=>norm(q.name)===norm(z.name));if(m&&m.video)z.video=m.video});
+  });
+}
 function restoreFrom(txt){
   let o=null;try{o=JSON.parse(txt||'')}catch(err){}
   if(!o||!o.program){toast("That doesn't look like a backup from this tracker");return false}
-  applyLoaded(o);
+  const oldLib=clone(S.program.lib);
+  applyLoaded(o);keepVideos(oldLib);
   const ids=[];
   (Array.isArray(o.sessions)?o.sessions:[]).forEach(x=>{const ss=normSession(x,x&&x.id);if(ss){deleted.delete(ss.id);S.sessions[ss.id]=ss;ids.push(ss.id)}});
   Object.assign(S.templates,normTemplates(o.templates));
