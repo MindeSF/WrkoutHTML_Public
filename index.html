@@ -287,13 +287,13 @@ function safeUrl(u){u=String(u||'').trim();if(!u)return'';if(!/^https?:\/\//i.te
 let S={program:defProgram(),weeks:{},sessions:{},templates:{}};
 const DEFAULT_TEMPLATE='Min Max Phase 2';
 function normTemplates(m){const o={};if(m&&typeof m==='object')for(const k in m){const t=m[k];if(!t||!t.program)continue;const id=String(t.id||k);
-  const np=normProgram(t.program);o[id]={id,name:String(t.name||'Template').slice(0,60),created:+t.created||Date.now(),program:{days:np.days,lib:np.lib,length:np.length,unit:np.unit},weeks:normWeeks(t.weeks)}}return o}
-function snapshotTemplate(name,id){const p=S.program;return{id:id||('t'+nid()),name:String(name).trim().slice(0,60),created:Date.now(),program:clone({days:p.days,lib:p.lib,length:p.length,unit:p.unit}),weeks:clone(S.weeks)}}
+  const np=normProgram(t.program);o[id]={id,name:String(t.name||'Template').slice(0,60),created:+t.created||Date.now(),program:{days:np.days,lib:np.lib,length:np.length,unit:np.unit,starts:np.starts},weeks:normWeeks(t.weeks)}}return o}
+function snapshotTemplate(name,id){const p=S.program;return{id:id||('t'+nid()),name:String(name).trim().slice(0,60),created:Date.now(),program:clone({days:p.days,lib:p.lib,length:p.length,unit:p.unit,starts:p.starts||{}}),weeks:clone(S.weeks)}}
 const tplByName=n=>Object.values(S.templates).find(t=>norm(t.name)===norm(n));
 function loadTemplate(t){
   const p=S.program,src=clone(t);
   const oldLib=clone(p.lib);Object.assign(p.lib,src.program.lib);keepVideos(oldLib);
-  p.days=src.program.days;p.length=src.program.length;p.unit=src.program.unit;p.cycle.week=clamp(p.cycle.week,1,p.length);
+  p.days=src.program.days;p.length=src.program.length;p.unit=src.program.unit;p.starts=Object.assign({},p.starts||{},src.program.starts||{});p.cycle.week=clamp(p.cycle.week,1,p.length);
   S.weeks=src.weeks;saveProgram(0);saveWeeks(Object.keys(S.weeks).map(Number));
 }
 function defProgram(){return{v:2,unit:'kg',length:12,days:[],lib:{},cycle:{num:1,week:1},cycles:{}}}
@@ -315,7 +315,7 @@ function normProgram(p){
   const lib={};if(p.lib&&typeof p.lib==='object')for(const k in p.lib){const x=p.lib[k];if(x&&x.id)lib[String(x.id)]=normLib(x)}
   const cyc=p.cycle||{};const cycles={};
   if(p.cycles&&typeof p.cycles==='object')for(const k in p.cycles){const c=p.cycles[k];if(c&&parseInt(k)>0)cycles[parseInt(k)]={end:+c.end||0,done:!!c.done,week:parseInt(c.week)||0}}
-  return{v:2,unit:p.unit==='lb'?'lb':'kg',length:len,
+  return{v:2,unit:p.unit==='lb'?'lb':'kg',length:len,starts:normStarts(p.starts),
     days:(Array.isArray(p.days)?p.days:[]).filter(d=>d&&d.id).map(d=>({id:String(d.id),name:String(d.name||'Day').slice(0,40)})),
     lib,cycle:{num:Math.max(1,parseInt(cyc.num)||1),week:clamp(parseInt(cyc.week)||1,1,len)},cycles};
 }
@@ -708,14 +708,15 @@ function vWorkout(){
     const video=it.swap?(safeUrl(it.swapVideo)||safeUrl(sx&&sx.video)):safeUrl(lx?lx.video:it.video);
     const nt=notesFor(it);
     const nOpen=!!(view.notesOpen&&view.notesOpen[i]);
-    const last=lastFor(pn,s.id,s.date,it.sid);
+    const last=prevFor(pn,s,it.sid);
     const open=view.swapOpen===i;
     h+='<section class="card"><div class="exh"><div><h3><button data-act="exhist" data-name="'+esc(pn)+'">'+esc(pn)+'</button></h3>'+(it.swap?'<div class="sub">Instead of '+esc(it.name)+'</div>':'')+'</div><div class="exa">'+(video?'<a class="btn sm" href="'+esc(video)+'" target="_blank" rel="noopener noreferrer">▶ Video</a>':'')+(nt.txt?'<button class="btn sm'+(nOpen?' swapped':'')+'" data-act="notesOpen" data-i="'+i+'" aria-expanded="'+nOpen+'">Notes</button>':'')+'<button class="btn sm'+(it.swap||open?' swapped':'')+'" data-act="swapOpen" data-i="'+i+'" aria-expanded="'+open+'">⇄ Swap</button></div></div>';
     if(open)h+=swapHTML(it,i);
     if(it.swap&&!s.finished&&libEx(it.exId))h+='<div class="always"><span class="sub">Gym never has '+esc(it.name)+'?</span><button class="btn sm" data-act="swapAlways" data-i="'+i+'" data-confirm>Use '+esc(it.swap)+' in all '+S.program.length+' weeks</button></div>';
     h+='<div class="tgt">'+itemPills(it)+'</div>';
     if(nOpen)h+=notesHTML(nt);
-    if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+'</div>';
+    if(last&&last.start)h+='<div class="last">No history yet · <b>starting point</b>'+(last.note?' from '+esc(last.note):'')+'</div>';
+    else if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+'</div>';
     else h+='<div class="last">First time doing this one. Next time you\'ll see these numbers under each set.</div>';
     if(warmCount(it.warmup))h+='<div class="warmline">Warm-up <b>'+esc(it.warmup)+' set'+(it.warmup.trim()==='1'?'':'s')+'</b> first, then your working sets</div>';
     h+='<div class="sets"><div class="h">Set</div><div class="h">'+u+'</div><div class="h">Reps</div><div class="h">RIR</div><div class="h">Done</div>';
@@ -735,7 +736,7 @@ function vWorkout(){
     it.sets.forEach((st,j)=>{
       h+=row(st,j,'work');
       const ls=last&&last.sets[j],isLast=j===it.sets.length-1;
-      const prev=ls&&(ls.w||ls.r)?'Last: <b>'+esc(ls.w||'–')+' '+esc(S.program.unit)+' × '+esc(ls.r||'–')+'</b>':'';
+      const prev=ls&&(ls.w||ls.r)?(last.start?'Start':'Last')+': <b>'+esc(ls.w||'–')+' '+esc(S.program.unit)+' × '+esc(ls.r||'–')+'</b>':'';
       const tech=isLast&&it.tech?'<span class="techtag">Last set: '+esc(it.tech)+'</span>':'';
       if(prev||tech)h+='<div class="prev">'+tech+(prev?'<span>'+prev+' <i id="cmp-'+i+'-'+j+'">'+cmpHTML(st,ls)+'</i></span>':'')+'</div>';
       if(isLast&&dropInfo(it))h+='<div class="dropcalc" id="drop-'+i+'">'+dropHTML(it)+'</div>';
@@ -807,6 +808,8 @@ function settingsHTML(){
   const p=S.program;
   let h='<div class="sect">Settings</div><div class="card"><div class="setrow"><span>Weight unit</span><div class="seg"><button data-act="unit" data-u="kg" class="'+(p.unit==='kg'?'on':'')+'">kg</button><button data-act="unit" data-u="lb" class="'+(p.unit==='lb'?'on':'')+'">lb</button></div></div>';
   h+='<div class="lenrow"><div><div>Program length</div><div class="sub">Weeks in one cycle</div></div><div class="row"><button class="btn icon sm" data-act="len" data-d="-1" aria-label="Fewer weeks"'+(p.length<=1?' disabled':'')+'>−</button><span class="num" style="font-size:22px;min-width:34px;text-align:center">'+p.length+'</span><button class="btn icon sm" data-act="len" data-d="1" aria-label="More weeks"'+(p.length>=52?' disabled':'')+'>+</button></div></div></div>';
+  {const st=S.program.starts||{},ks=Object.keys(st).sort();
+   if(ks.length){h+='<div class="sect">Starting points</div><div class="card"><details class="notes" style="margin-top:0"><summary>'+ks.length+' exercises have a starting point</summary><p class="sub" style="margin:6px 0 8px">Shown as a guide until you log that exercise; then your own history takes over. Change one by tapping the exercise above.</p>'+ks.map(k=>'<div class="hrow"><div style="text-transform:capitalize">'+esc(k)+'</div><div class="v">'+esc(st[k].w)+' '+esc(S.program.unit)+(st[k].r?' × '+esc(st[k].r):'')+'</div></div>').join('')+'</details></div>'}}
   h+='<div class="sect">Templates</div><div class="card"><p class="sub" style="margin-top:0">A template saves your whole plan: days, exercises, notes, substitutions and every week\'s sets, reps, RIR, rest and techniques. Your workout history isn\'t part of it.</p>';
   const tpls=Object.values(S.templates).sort((a,b)=>a.created-b.created);
   tpls.forEach(t=>{const nd=t.program.days.length,ne=new Set(Object.values(t.weeks).flatMap(w=>Object.values(w.days).flat().map(x=>x.exId))).size;
@@ -841,6 +844,7 @@ function vExercise(){
   h+='<label class="lbl">Name<input data-in="name" value="'+esc(d.name)+'" placeholder="e.g. Incline dumbbell press" autocomplete="off" maxlength="80"></label>';
   h+='<label class="lbl">Video link<input data-in="video" type="url" inputmode="url" autocapitalize="off" autocorrect="off" value="'+esc(d.video)+'" placeholder="Paste the link from your PDF"></label>';
   h+='<label class="lbl" style="margin-bottom:0">Notes<textarea data-in="notes" rows="3" placeholder="Form cues, set-up tips…">'+esc(d.notes)+'</textarea></label>';
+  h+='<div class="grid2" style="margin-top:12px"><label class="lbl" style="margin-bottom:0">Starting '+esc(p.unit)+'<input data-in="startW" inputmode="decimal" value="'+esc(d.startW||'')+'" placeholder="–" maxlength="12" autocomplete="off"></label><label class="lbl" style="margin-bottom:0">Starting reps<input data-in="startR" inputmode="numeric" value="'+esc(d.startR||'')+'" placeholder="–" maxlength="12" autocomplete="off"></label></div><p class="hint" style="margin:6px 0 0">A guide shown until you have logged this exercise. After that, your last session is used.</p>';
   if(d.libId!=='new')h+='<p class="hint" style="margin:10px 0 0">Name, video, notes and substitutions are shared by every week that uses this exercise. To use a different exercise from this week on, pick it above or choose "New exercise".</p>';
   h+='</div>';
   h+='<div class="sect">Week '+n+' targets</div><div class="card">'+
@@ -861,7 +865,7 @@ function vExercise(){
   }
   return h;
 }
-function libToDraft(d,id){const x=libEx(id);if(x){d.name=x.name;d.video=x.video;d.notes=x.notes;d.subs=clone(x.subs)}else{d.name='';d.video='';d.notes='';d.subs=[]}}
+function libToDraft(d,id){const x=libEx(id);if(x){d.name=x.name;d.video=x.video;d.notes=x.notes;d.subs=clone(x.subs)}else{d.name='';d.video='';d.notes='';d.subs=[]}const st=x&&(S.program.starts||{})[norm(x.name)];d.startW=st?st.w:'';d.startR=st?st.r:''}
 // When an existing exercise is picked for a new slot, start from its most recent targets.
 function latestSlotFor(exId,before){for(let n=before;n>=1;n--){const w=S.weeks[n];if(!w)continue;for(const k in w.days){const s=w.days[k].find(x=>x.exId===exId);if(s)return s}}return null}
 
@@ -1030,6 +1034,7 @@ function keepVideos(oldLib){
 }
 function restoreFrom(txt){
   let o=null;try{o=JSON.parse(txt||'')}catch(err){}
+  if(o&&!o.program&&o.starts&&typeof o.starts==='object'){const n=mergeStarts(o.starts);toast('Loaded '+n+' starting points');return true}
   if(!o||!o.program){toast("That doesn't look like a backup from this tracker");return false}
   const oldLib=clone(S.program.lib);
   applyLoaded(o);keepVideos(oldLib);
@@ -1163,6 +1168,19 @@ setInterval(()=>{if(ghOn()&&GH.pending&&navigator.onLine&&!ghBusy)ghBackup(false
 window.addEventListener('online',()=>{refreshGh();if(GH.pending)ghBackup(false)});
 window.addEventListener('offline',refreshGh);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&GH.pending&&navigator.onLine)ghBackup(false)});
+function normStarts(m){const o={};if(m&&typeof m==='object')Object.keys(m).slice(0,300).forEach(k=>{const v=m[k];if(v&&String(v.w||'').trim())o[norm(k)]={w:String(v.w).trim().slice(0,12),r:String(v.r||'').trim().slice(0,12),note:String(v.note||'').slice(0,80)}});return o}
+// What to compare against: your last time doing it (any week, any run), otherwise its starting point
+function prevFor(name,s,sid){
+  const l=lastFor(name,s.id,s.date,sid);if(l)return l;
+  const st=(S.program.starts||{})[norm(name)];if(!st||!st.w)return null;
+  return{start:true,note:st.note,sets:Array.from({length:20},()=>({w:st.w,r:st.r})),warm:[],rating:0};
+}
+function mergeStarts(m){
+  const add=normStarts(m),n=Object.keys(add).length;
+  S.program.starts=Object.assign(S.program.starts||{},add);
+  const t=tplByName(DEFAULT_TEMPLATE);if(t)t.program.starts=Object.assign(t.program.starts||{},add);
+  saveProgram(0);saveLocal();return n;
+}
 function move(arr,i,d){const j=i+d;if(i<0||j<0||j>=arr.length)return false;const t=arr[i];arr[i]=arr[j];arr[j]=t;return true}
 function copyWeekTo(from,to){const src=S.weeks[from];S.weeks[to]={n:to,days:src?clone(src.days):{}}}
 
@@ -1209,7 +1227,7 @@ app.addEventListener('click',e=>{
       const warm=b.dataset.kind==='warm',arr=warm?it.warm:it.sets,st=arr[j];if(!st)break;
       st.done=!st.done;
       if(st.done){
-        const last=lastFor(perfName(it),s.id,s.date,it.sid),ls=last&&(warm?last.warm:last.sets)[j];
+        const last=prevFor(perfName(it),s,it.sid),ls=last&&(warm?last.warm:last.sets)[j];
         if(ls&&!st.w&&ls.w)st.w=ls.w;
         if(!st.r){if(!warm&&/^\d+$/.test(String(it.reps).trim()))st.r=String(it.reps).trim();else if(ls&&ls.r)st.r=ls.r}
         if(it.rest&&!warm)startRest(it.rest,perfName(it));
@@ -1284,6 +1302,8 @@ app.addEventListener('click',e=>{
       const badSub=subs.find(z=>z.video.trim()&&!safeUrl(z.video));
       if(badSub){toast('The video link for '+badSub.name.trim()+" doesn't look right");break}
       const exId=d.libId==='new'?'x'+nid():d.libId;
+      {p.starts=p.starts||{};const sk=norm(d.name),w=String(d.startW||'').trim(),r=String(d.startR||'').trim(),old=p.starts[sk];
+       if(w)p.starts[sk]={w,r,note:old&&old.w===w&&old.r===r?old.note:'set by you'};else delete p.starts[sk];}
       p.lib[exId]=normLib({id:exId,name:d.name.trim(),video:url,notes:d.notes,subs:subs.map(z=>({name:z.name,video:safeUrl(z.video),notes:z.notes||''}))});
       const slot=normSlot({sid:view.sid||('q'+nid()),exId,warmup:d.warmup.trim(),sets:d.sets,reps:d.reps.trim(),rirs:d.rirs.slice(0,rirCount(d)),rest:d.rest,ss:d.ss,tech:d.tech});
       const upsert=wk=>{const arr=week(wk).days[view.dayId]||(week(wk).days[view.dayId]=[]);const k=arr.findIndex(x=>x.sid===slot.sid);if(k>=0)arr[k]=clone(slot);else arr.push(clone(slot))};
@@ -1341,7 +1361,7 @@ app.addEventListener('input',e=>{
     else if(f==='rating'){const it=s.items[+t.dataset.i];if(!it)return;setRating(it,t,+t.value)}
     else{const it=s.items[+t.dataset.i];if(!it)return;const st=(t.dataset.kind==='warm'?it.warm:it.sets)[+t.dataset.j];if(!st)return;st[f]=t.value.trim().slice(0,12);
       const el=document.getElementById('cmp-'+t.dataset.i+'-'+t.dataset.j);
-      if(el&&t.dataset.kind!=='warm'){const last=lastFor(perfName(it),s.id,s.date,it.sid);el.innerHTML=cmpHTML(st,last&&last.sets[+t.dataset.j])}
+      if(el&&t.dataset.kind!=='warm'){const last=prevFor(perfName(it),s,it.sid);el.innerHTML=cmpHTML(st,last&&last.sets[+t.dataset.j])}
       const dc=document.getElementById('drop-'+t.dataset.i);if(dc)dc.innerHTML=dropHTML(it)}
     saveSession(s.id);
   }else if(view.name==='program'){
