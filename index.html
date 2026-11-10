@@ -1056,7 +1056,7 @@ let GH=(()=>{try{return JSON.parse(localStorage.getItem(GHK)||'null')||{}}catch(
 function ghSave(){try{localStorage.setItem(GHK,JSON.stringify(GH))}catch(e){}}
 const ghOn=()=>!!(GH.repo&&GH.token);
 const phoneEmpty=()=>!S.program.days.length&&!sessList().length;
-let ghBusy=false,ghTimer=0;
+let ghBusy=false,ghTimer=0,ghAgain=false;
 function b64(txt){const by=new TextEncoder().encode(txt);let s='';for(let i=0;i<by.length;i+=0x8000)s+=String.fromCharCode.apply(null,by.subarray(i,i+0x8000));return btoa(s)}
 function gh(path,opt){
   opt=opt||{};
@@ -1073,7 +1073,8 @@ function ghErrText(){
   return'Could not reach GitHub. It will try again.';
 }
 async function ghBackup(manual){
-  if(!ghOn()||ghBusy)return;
+  if(!ghOn())return;
+  if(ghBusy){ghAgain=true;return}   // a backup is already running: run again right after so nothing is missed
   if(phoneEmpty()){GH.pending=false;ghSave();refreshGh();if(manual)toast('Nothing to back up yet. Restore from GitHub or load a backup first');return}
   if(!navigator.onLine){GH.pending=true;ghSave();refreshGh();if(manual)toast('No signal. It will back up when you are online');return}
   ghBusy=true;clearTimeout(ghTimer);refreshGh();
@@ -1092,6 +1093,7 @@ async function ghBackup(manual){
     if(manual)toast(ghErrText());
   }
   ghBusy=false;refreshGh();
+  if(ghAgain){ghAgain=false;ghBackup(false)}
 }
 // any change on the phone: back up ~20 s later (so a burst of edits makes one backup)
 function ghSchedule(){if(!ghOn())return;GH.pending=true;ghSave();clearTimeout(ghTimer);ghTimer=setTimeout(()=>ghBackup(false),20000);refreshGh()}
@@ -1239,7 +1241,7 @@ app.addEventListener('click',e=>{
       if(!v){toast('Type the exercise you’re doing instead');if(inp)inp.focus();break}
       it.swap=norm(v)===norm(it.name)?'':v;it.swapVideo='';view.swapOpen=null;saveSession(s.id,0);rerender();toast('Swapped to '+v+' for today');break;
     }
-    case 'finish':if(s){s.finished=true;saveSession(s.id,0);stopRest();toast('Workout saved 💪');go({name:'home'})}break;
+    case 'finish':if(s){s.finished=true;saveSession(s.id,0);setTimeout(()=>ghBackup(false),50);stopRest();toast('Workout saved 💪');go({name:'home'})}break;
     case 'delSession':if(s){
       const id=s.id;deleted.add(id);delete S.sessions[id];
       const w=W['s:'+id];if(w&&w.t){clearTimeout(w.t);w.t=null}
