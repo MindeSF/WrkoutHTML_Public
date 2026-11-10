@@ -238,6 +238,8 @@ select.field{appearance:none;-webkit-appearance:none;background:var(--bg) url("d
 .dropcalc .sub{font-size:12.5px}
 .tplrow{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding:10px 0}
 .tplrow:first-of-type{border-top:0}
+.ghs{display:flex;align-items:center;gap:8px;font-size:14px}
+.ghs .dot{flex:none}
 .pill.ss{border-color:#4a5a24;color:var(--accent)}
 .pill.tech{border-color:#6b5420;color:var(--warn)}
 </style>
@@ -337,7 +339,7 @@ function normSession(x,id){
 }
 function normSessions(m){const o={};if(m&&typeof m==='object'){for(const k in m){const s=normSession(m[k],m[k]&&m[k].id||k);if(s)o[s.id]=s}}return o}
 function loadLocal(){try{const j=JSON.parse(localStorage.getItem(LS)||'null');if(j&&j.program)return j}catch(e){}return null}
-function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(S));return true}catch(e){return false}}
+function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(S));ghSchedule();return true}catch(e){return false}}
 function applyLoaded(o){
   if(isLegacy(o.program)){const m=migrateLegacy(o.program);S.program=m.program;S.weeks=m.weeks;return true}
   S.program=normProgram(o.program);S.weeks=normWeeks(o.weeks);return false;
@@ -453,6 +455,7 @@ async function boot(){
   render();
   mode='local';setStatus('local');
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
+  setTimeout(()=>{if(ghOn()&&(GH.pending||!GH.last||Date.now()-GH.last>864e5))ghBackup(false)},3000);
   return;
   let c=null;
   for(let i=0;i<40&&!c;i++){if(window.claude&&typeof window.claude.use==='function')c=window.claude;else await sleep(100)}
@@ -809,6 +812,7 @@ function settingsHTML(){
   if(!tpls.length)h+='<p class="sub">No templates yet.</p>';
   if(S.program.days.length)h+='<div class="row other mt" style="flex-wrap:nowrap"><input class="field" id="tplname" placeholder="Template name" maxlength="60" autocomplete="off" value="'+esc(tpls.length?'':DEFAULT_TEMPLATE)+'" style="margin:0;flex:1;min-width:0"><button class="btn sm" data-act="tplSave">Save current plan</button></div><p class="sub" style="margin:8px 0 0">Loading a template replaces the plan for all weeks. Your history is kept.</p>';
   h+='</div>';
+  h+='<div class="sect">GitHub backup</div><div class="card">'+ghCardHTML()+'</div>';
   h+='<div class="sect">Backup</div><div class="card"><p class="sub" style="margin-top:0">Everything is saved on this phone. Save a backup file every week or two (it goes to your Downloads) so your history is safe if the phone is reset.</p><div class="exf" style="margin-top:0"><button class="btn sm primary" data-act="saveBackupFile">Save backup file</button><label class="btn sm">Load backup file<input type="file" accept=".json,application/json,text/plain" data-in="bkfile" hidden></label></div><div class="exf"><button class="btn sm ghost" data-act="copyBackup">Copy backup</button><button class="btn sm" data-act="showRestore">'+(view.restore?'Hide paste':'Paste a backup…')+'</button></div>';
   if(view.backupText)h+='<textarea class="mono mt" readonly rows="5">'+esc(view.backupText)+'</textarea><p class="sub">Couldn\'t copy automatically. Select all of the text above and copy it.</p>';
   if(view.restore)h+='<textarea class="mono mt" data-in="restore" rows="5" placeholder="Paste your backup here">'+esc(view.restoreText||'')+'</textarea><button class="btn sm primary mt" data-act="doRestore" data-confirm>Restore this backup</button>';
@@ -1040,6 +1044,100 @@ app.addEventListener('change',e=>{
   const f=t.files[0];t.value='';
   f.text().then(txt=>{if(restoreFrom(txt)){view.pweek=S.program.cycle.week;rerender()}}).catch(()=>toast("Couldn't read that file"));
 });
+/* ---------- GitHub auto-backup ----------
+   Saves the same backup file you get from "Save backup file" into your private GitHub repository.
+   One file, overwritten each time; GitHub keeps every earlier version in the repository's history.
+   The access key is stored only on this phone and is never included in backups. */
+const GHK='workoutlog_github';
+let GH=(()=>{try{return JSON.parse(localStorage.getItem(GHK)||'null')||{}}catch(e){return{}}})();
+function ghSave(){try{localStorage.setItem(GHK,JSON.stringify(GH))}catch(e){}}
+const ghOn=()=>!!(GH.repo&&GH.token);
+const phoneEmpty=()=>!S.program.days.length&&!sessList().length;
+let ghBusy=false,ghTimer=0;
+function b64(txt){const by=new TextEncoder().encode(txt);let s='';for(let i=0;i<by.length;i+=0x8000)s+=String.fromCharCode.apply(null,by.subarray(i,i+0x8000));return btoa(s)}
+function gh(path,opt){
+  opt=opt||{};
+  const headers={'Authorization':'Bearer '+GH.token,'Accept':opt.accept||'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+  if(opt.body)headers['Content-Type']='application/json';
+  return fetch('https://api.github.com/repos/'+GH.repo+path,{method:opt.method||'GET',headers,body:opt.body,cache:'no-store'});
+}
+const ghFile=()=>'/contents/'+String(GH.path||'workout-log-backup.json').split('/').map(encodeURIComponent).join('/');
+function ghErrText(){
+  const e=String(GH.err||'');
+  if(e==='401')return'GitHub did not accept the access key. Check it, or make a new one.';
+  if(e==='404')return'Can not find that repository. Check the name and that the key has access to it.';
+  if(e==='403')return'The access key can not write to that repository. It needs Contents: Read and write.';
+  return'Could not reach GitHub. It will try again.';
+}
+async function ghBackup(manual){
+  if(!ghOn()||ghBusy)return;
+  if(phoneEmpty()){GH.pending=false;ghSave();refreshGh();if(manual)toast('Nothing to back up yet. Restore from GitHub or load a backup first');return}
+  if(!navigator.onLine){GH.pending=true;ghSave();refreshGh();if(manual)toast('No signal. It will back up when you are online');return}
+  ghBusy=true;clearTimeout(ghTimer);refreshGh();
+  try{
+    let sha;
+    const g=await gh(ghFile()+'?ref=main');
+    if(g.ok)sha=(await g.json()).sha;else if(g.status!==404)throw new Error(g.status);
+    const body={message:'Workout Log backup '+new Date().toISOString().slice(0,16).replace('T',' '),content:b64(backupJSON())};
+    if(sha)body.sha=sha;
+    const r=await gh(ghFile(),{method:'PUT',body:JSON.stringify(body)});
+    if(!r.ok)throw new Error(r.status);
+    GH.last=Date.now();GH.pending=false;GH.err='';ghSave();
+    if(manual)toast('Backed up to GitHub ✓');
+  }catch(e){
+    GH.pending=true;GH.err=String(e&&e.message||e);ghSave();
+    if(manual)toast(ghErrText());
+  }
+  ghBusy=false;refreshGh();
+}
+// any change on the phone: back up ~20 s later (so a burst of edits makes one backup)
+function ghSchedule(){if(!ghOn())return;GH.pending=true;ghSave();clearTimeout(ghTimer);ghTimer=setTimeout(()=>ghBackup(false),20000);refreshGh()}
+async function ghRestore(){
+  if(!ghOn())return;
+  if(!navigator.onLine){toast('No signal. Try again when you are online');return}
+  try{
+    const r=await gh(ghFile()+'?ref=main',{accept:'application/vnd.github.raw+json'});
+    if(!r.ok){GH.err=String(r.status);toast(r.status===404?'No backup in that repository yet':ghErrText());return}
+    if(restoreFrom(await r.text())){view.pweek=S.program.cycle.week;rerender()}
+  }catch(e){toast('Could not reach GitHub')}
+}
+async function ghConnect(){
+  const repo=(document.getElementById('ghrepo')||{}).value||'',token=(document.getElementById('ghtoken')||{}).value||'';
+  const rp=repo.trim().replace(/^https?:\/\/github\.com\//i,'').replace(/\.git$/,'').replace(/\/+$/,'');
+  if(!/^[\w.-]+\/[\w.-]+$/.test(rp)){toast('Enter the repository as owner/name, e.g. MindeSF/WorkoutHTML');return}
+  if(!token.trim()){toast('Paste your GitHub access key');return}
+  if(!navigator.onLine){toast('Connect while you have signal');return}
+  GH={repo:rp,token:token.trim(),path:'workout-log-backup.json',pending:true};
+  try{
+    const r=await gh('');
+    if(!r.ok){GH.err=String(r.status);const t=ghErrText();GH={};ghSave();toast(t);refreshGh();return}
+  }catch(e){GH={};ghSave();toast('Could not reach GitHub');refreshGh();return}
+  let remote=false;try{remote=(await gh(ghFile()+'?ref=main')).ok}catch(e){}
+  if(remote&&phoneEmpty()){GH.pending=false;ghSave();rerender();toast('Connected. Found your backup on GitHub: tap Restore from GitHub to load it');return}
+  ghSave();toast('Connected to '+rp);rerender();ghBackup(true);
+}
+function ghStatus(){
+  if(ghBusy)return'<span class="dot busy"></span>Backing up…';
+  if(GH.pending){
+    if(!navigator.onLine)return'<span class="dot warn"></span>No signal. It will back up when you are online.';
+    if(GH.err)return'<span class="dot warn"></span>'+esc(ghErrText());
+    return'<span class="dot busy"></span>Changes waiting to back up';
+  }
+  if(GH.last)return'<span class="dot ok"></span>Backed up '+esc(fmtDate(GH.last))+' at '+new Date(GH.last).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  return'<span class="dot"></span>Not backed up yet';
+}
+function ghCardHTML(){
+  if(!ghOn())return'<p class="sub" style="margin-top:0">Back up automatically to your private GitHub repository whenever you have signal. At the gym with no signal, it waits and backs up next time you are online.</p>'+
+    '<label class="lbl">Repository<input class="field" id="ghrepo" value="'+esc(GH.repo||'MindeSF/WorkoutHTML')+'" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="owner/name"></label>'+
+    '<label class="lbl">Access key<input class="field" id="ghtoken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…"></label>'+
+    '<button class="btn sm primary" data-act="ghConnect">Connect</button>';
+  return'<div class="ghs" id="ghstatus">'+ghStatus()+'</div><p class="sub" style="margin:6px 0 10px">To <b>'+esc(GH.repo)+'</b> · '+esc(GH.path||'workout-log-backup.json')+'</p>'+
+    '<div class="exf" style="margin-top:0"><button class="btn sm primary" data-act="ghNow">Back up now</button><button class="btn sm" data-act="ghRestore" data-confirm>Restore from GitHub</button><button class="btn sm ghost danger" data-act="ghOff" data-confirm>Disconnect</button></div>';
+}
+function refreshGh(){const el=document.getElementById('ghstatus');if(el)el.innerHTML=ghStatus()}
+window.addEventListener('online',()=>{refreshGh();if(GH.pending)ghBackup(false)});
+window.addEventListener('offline',refreshGh);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&GH.pending&&navigator.onLine)ghBackup(false)});
 function move(arr,i,d){const j=i+d;if(i<0||j<0||j>=arr.length)return false;const t=arr[i];arr[i]=arr[j];arr[j]=t;return true}
 function copyWeekTo(from,to){const src=S.weeks[from];S.weeks[to]={n:to,days:src?clone(src.days):{}}}
 
@@ -1183,6 +1281,10 @@ app.addEventListener('click',e=>{
     }
     case 'tplLoad':{const t=S.templates[b.dataset.id];if(!t)break;loadTemplate(t);view.pweek=1;rerender();toast('Loaded "'+t.name+'"');break}
     case 'tplDel':{const t=S.templates[b.dataset.id];if(!t)break;delete S.templates[t.id];saveLocal();rerender();toast('Deleted "'+t.name+'"');break}
+    case 'ghConnect':ghConnect();break;
+    case 'ghNow':ghBackup(true);break;
+    case 'ghRestore':ghRestore();break;
+    case 'ghOff':GH={};ghSave();rerender();toast('Disconnected from GitHub');break;
     case 'saveBackupFile':{
       const a=document.createElement('a');
       a.href=URL.createObjectURL(new Blob([backupJSON()],{type:'application/json'}));
