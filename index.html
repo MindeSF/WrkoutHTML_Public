@@ -340,7 +340,7 @@ function normSession(x,id){
 }
 function normSessions(m){const o={};if(m&&typeof m==='object'){for(const k in m){const s=normSession(m[k],m[k]&&m[k].id||k);if(s)o[s.id]=s}}return o}
 function loadLocal(){try{const j=JSON.parse(localStorage.getItem(LS)||'null');if(j&&j.program)return j}catch(e){}return null}
-function saveLocal(){try{localStorage.setItem(LS,JSON.stringify(S));ghSchedule();return true}catch(e){return false}}
+function saveLocal(){try{const ss={};for(const k in S.sessions)if(!S.sessions[k].draft)ss[k]=S.sessions[k];localStorage.setItem(LS,JSON.stringify(Object.assign({},S,{sessions:ss})));ghSchedule();return true}catch(e){return false}}
 function applyLoaded(o){
   if(isLegacy(o.program)){const m=migrateLegacy(o.program);S.program=m.program;S.weeks=m.weeks;return true}
   S.program=normProgram(o.program);S.weeks=normWeeks(o.weeks);return false;
@@ -348,7 +348,8 @@ function applyLoaded(o){
 
 const deleted=new Set();
 const uploading=new Set();
-const sessList=()=>Object.values(S.sessions).filter(s=>!deleted.has(s.id)).sort((a,b)=>b.date-a.date);
+const sessList=()=>Object.values(S.sessions).filter(s=>!deleted.has(s.id)&&!s.draft).sort((a,b)=>b.date-a.date);
+function touch(s){if(s&&s.draft){delete s.draft;s.date=Date.now()}}
 const openSessionFor=dayId=>sessList().find(s=>s.dayId===dayId&&!s.finished);
 const finishedFor=(c,w,dayId)=>sessList().find(s=>s.cycle===c&&s.week===w&&s.dayId===dayId&&s.finished);
 const findDay=id=>S.program.days.find(d=>d.id===id);
@@ -415,7 +416,7 @@ window.addEventListener('pagehide',flushAll);
 function saveProgram(delay){queueWrite('program',()=>progRef,()=>clone(S.program),delay)}
 function saveWeek(n,delay){n=+n;queueWrite('w:'+n,()=>weeksCol.doc('w'+n),()=>S.weeks[n]?clone(S.weeks[n]):null,delay)}
 function saveWeeks(list){list.forEach((n,i)=>saveWeek(n,150+i*180))}
-function saveSession(id,delay){queueWrite('s:'+id,()=>sessCol.doc(id),()=>(S.sessions[id]&&!deleted.has(id))?clone(S.sessions[id]):null,delay)}
+function saveSession(id,delay){if(S.sessions[id]&&S.sessions[id].draft)return;queueWrite('s:'+id,()=>sessCol.doc(id),()=>(S.sessions[id]&&!deleted.has(id))?clone(S.sessions[id]):null,delay)}
 async function uploadSessions(ids){
   const items=ids.map(id=>S.sessions[id]).filter(Boolean).map(clone);
   items.forEach(s=>uploading.add(s.id));
@@ -745,7 +746,7 @@ function vWorkout(){
   });
   h+='<div class="card"><label class="lbl">Workout notes<textarea data-in="note" rows="3" placeholder="How did it feel? Anything to change next time?">'+esc(s.note)+'</textarea></label></div>';
   h+=s.finished?'<button class="btn block" data-act="back">Done</button>':'<button class="btn primary block big" data-act="finish">Finish workout</button>';
-  h+='<button class="btn ghost danger block mt" data-act="delSession" data-confirm>Delete this workout</button>';
+  if(!s.draft)h+='<button class="btn ghost danger block mt" data-act="delSession" data-confirm>Delete this workout</button>';
   return h;
 }
 
@@ -986,7 +987,8 @@ function startDay(dayId){
   const mk=n=>Array.from({length:n},()=>({w:'',r:'',done:false}));
   const s={id:'s'+nid(),cycle:c.num,week:c.week,dayId:d.id,dayName:d.name,date:Date.now(),finished:false,note:'',
     items:slots.map(sl=>{const x=libEx(sl.exId)||{name:'Exercise',video:'',subs:[]};return{exId:sl.exId,sid:sl.sid,name:x.name,warmup:sl.warmup,planSets:sl.sets,reps:sl.reps,target:'',rest:sl.rest,ss:sl.ss||'',tech:sl.tech||'',video:x.video,subs:clone(x.subs),rirs:sl.rirs.slice(),swap:'',swapVideo:'',rating:0,warm:[],sets:mk(sl.sets)}})};
-  S.sessions[s.id]=s;saveSession(s.id,0);
+  for(const k in S.sessions)if(S.sessions[k].draft)delete S.sessions[k];
+  s.draft=true;S.sessions[s.id]=s;
   go({name:'workout',id:s.id,back:{name:'home'}});
 }
 /* ---------- imported programme (transcribed from the old app's export) ---------- */
@@ -1155,7 +1157,7 @@ function refreshGh(){
   const st=document.getElementById('status');if(st)st.innerHTML=ghTopStatus();
 }
 // keep trying while the app is open (a weak gym signal can fail without the phone ever going "offline")
-setInterval(()=>{if(ghOn()&&GH.pending&&navigator.onLine&&!ghBusy)ghBackup(false);refreshGh()},60000);
+setInterval(()=>{if(ghOn()&&GH.pending&&navigator.onLine&&!ghBusy)ghBackup(false);refreshGh()},300000);
 window.addEventListener('online',()=>{refreshGh();if(GH.pending)ghBackup(false)});
 window.addEventListener('offline',refreshGh);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&GH.pending&&navigator.onLine)ghBackup(false)});
@@ -1171,6 +1173,7 @@ app.addEventListener('click',e=>{
   }
   const a=b.dataset.act,p=S.program,i=+b.dataset.i,j=+b.dataset.j,dd=+b.dataset.d;
   const s=view.name==='workout'?S.sessions[view.id]:null;
+  if(s&&s.draft&&['done','addSet','rmSet','addWarm','rmWarm','clearRate','swapPick','swapOther','swapAlways','finish'].includes(a))touch(s);
   switch(a){
     case 'back':go(view.back||{name:'home'});break;
     case 'tab':go({name:b.dataset.tab});break;
@@ -1331,7 +1334,7 @@ app.addEventListener('click',e=>{
 app.addEventListener('input',e=>{
   const t=e.target,f=t.dataset&&t.dataset.in;if(!f)return;
   if(view.name==='workout'){
-    const s=S.sessions[view.id];if(!s)return;
+    const s=S.sessions[view.id];if(!s)return;touch(s);
     if(f==='note')s.note=t.value.slice(0,3000);
     else if(f==='rating'){const it=s.items[+t.dataset.i];if(!it)return;setRating(it,t,+t.value)}
     else{const it=s.items[+t.dataset.i];if(!it)return;const st=(t.dataset.kind==='warm'?it.warm:it.sets)[+t.dataset.j];if(!st)return;st[f]=t.value.trim().slice(0,12);
@@ -1367,7 +1370,7 @@ function setRating(it,el,v){
 app.addEventListener('pointerup',e=>{
   const t=e.target;if(!(t.dataset&&t.dataset.in==='rating')||view.name!=='workout')return;
   const s=S.sessions[view.id],it=s&&s.items[+t.dataset.i];
-  if(it&&!it.rating){setRating(it,t,+t.value);saveSession(s.id)}
+  if(it&&!it.rating){touch(s);setRating(it,t,+t.value);saveSession(s.id)}
 });
 app.addEventListener('keydown',e=>{
   if(e.key!=='Enter'||e.target.tagName!=='INPUT')return;
