@@ -527,6 +527,8 @@ function vHistory(){
 }
 
 /* ----- program ----- */
+// Days you have opened on the Program tab (kept while the app is open; all closed on a fresh start)
+const progOpen=new Set();
 function vProgram(){
   const p=S.program;
   let h=top('Program');
@@ -541,9 +543,12 @@ function vProgram(){
   const has=weekHas(S.weeks[n]);
   h+='<div class="weekbar"><h2>Week '+n+'</h2><div class="row">'+(n>1?'<button class="btn sm" data-act="copyPrev"'+(has?' data-confirm':'')+'>Copy week '+(n-1)+'</button>':'')+(n<p.length&&has?'<button class="btn sm" data-act="copyLater" data-confirm>Copy to weeks '+(n+1)+'–'+p.length+'</button>':'')+'</div></div>';
   if(!has&&n>1&&weekHas(S.weeks[n-1]))h+='<p class="hint">Tip: tap "Copy week '+(n-1)+'" to start from last week, then just change the sets and reps.</p>';
+  h+='<div class="row" style="justify-content:flex-end;margin:-2px 0 10px"><button class="btn sm ghost" data-act="expandAll">Expand all</button><button class="btn sm ghost" data-act="collapseAll">Collapse all</button></div>';
   p.days.forEach((d,di)=>{
     const slots=daySlots(n,d.id),prev=n>1?daySlots(n-1,d.id):[];
-    h+='<section class="card"><div class="dayedit"><input class="field" data-in="dayName" data-day="'+esc(d.id)+'" value="'+esc(d.name)+'" aria-label="Day name" maxlength="40"><button class="btn icon sm" data-act="mvDay" data-day="'+esc(d.id)+'" data-d="-1" aria-label="Move day up"'+(di===0?' disabled':'')+'>↑</button><button class="btn icon sm" data-act="mvDay" data-day="'+esc(d.id)+'" data-d="1" aria-label="Move day down"'+(di===p.days.length-1?' disabled':'')+'>↓</button></div>';
+    const op=progOpen.has(d.id);
+    h+='<section class="card"><div class="dayedit"><button class="btn icon sm ghost daytog" data-act="dayToggle" data-day="'+esc(d.id)+'" aria-expanded="'+op+'" aria-label="'+(op?'Collapse ':'Expand ')+esc(d.name)+'">'+(op?'▾':'▸')+'</button><input class="field" data-in="dayName" data-day="'+esc(d.id)+'" value="'+esc(d.name)+'" aria-label="Day name" maxlength="40"><button class="btn icon sm" data-act="mvDay" data-day="'+esc(d.id)+'" data-d="-1" aria-label="Move day up"'+(di===0?' disabled':'')+'>↑</button><button class="btn icon sm" data-act="mvDay" data-day="'+esc(d.id)+'" data-d="1" aria-label="Move day down"'+(di===p.days.length-1?' disabled':'')+'>↓</button></div>';
+    if(!op){h+='<button class="daysum" data-act="dayToggle" data-day="'+esc(d.id)+'" aria-expanded="false">'+(slots.length?slots.length+' exercise'+(slots.length===1?'':'s'):'No exercises in week '+n)+'<span>Show ›</span></button></section>';return}
     if(!slots.length)h+='<p class="sub">No exercises in week '+n+'.</p>';
     slots.forEach((x,xi)=>{
       const lx=libEx(x.exId);
@@ -1072,13 +1077,16 @@ app.addEventListener('click',e=>{
       stopRest();toast('Workout deleted');go(view.back&&view.back.name==='history'?{name:'history'}:{name:'home'});
     }break;
     /* program */
+    case 'dayToggle':{const id=b.dataset.day;if(progOpen.has(id))progOpen.delete(id);else progOpen.add(id);rerender();break}
+    case 'expandAll':p.days.forEach(d=>progOpen.add(d.id));rerender();break;
+    case 'collapseAll':progOpen.clear();rerender();break;
     case 'pweek':view.pweek=+b.dataset.n;rerender();break;
     case 'copyPrev':{const n=view.pweek;if(n>1){copyWeekTo(n-1,n);saveWeek(n,0);rerender();toast('Copied week '+(n-1)+' into week '+n)}break}
     case 'copyLater':{const n=view.pweek,list=[];for(let k=n+1;k<=p.length;k++){copyWeekTo(n,k);list.push(k)}saveWeeks(list);rerender();toast('Copied week '+n+' to weeks '+(n+1)+'–'+p.length);break}
     case 'copyDayPrev':{const n=view.pweek,id=b.dataset.day;week(n).days[id]=clone(daySlots(n-1,id));saveWeek(n,0);rerender();toast('Copied from week '+(n-1));break}
     case 'importProg':importProgramme();view.pweek=1;rerender();toast('12-week programme loaded 💪');break;
     case 'quick':['Upper','Lower','Push','Pull','Arms'].forEach(n=>p.days.push({id:'d'+nid(),name:n}));saveProgram(0);rerender();break;
-    case 'addDay':p.days.push({id:'d'+nid(),name:'Day '+(p.days.length+1)});saveProgram(0);rerender();
+    case 'addDay':p.days.push({id:'d'+nid(),name:'Day '+(p.days.length+1)});progOpen.add(p.days[p.days.length-1].id);saveProgram(0);rerender();
       {const ins=app.querySelectorAll('.dayedit input');const l=ins[ins.length-1];if(l){l.focus();l.select()}}break;
     case 'mvDay':{const k=p.days.findIndex(x=>x.id===b.dataset.day);if(move(p.days,k,dd)){saveProgram();rerender()}break}
     case 'delDay':{
