@@ -503,7 +503,7 @@ function vWorkout(){
     h+='<div class="tgt">'+itemPills(it)+'</div>';
     if(nOpen)h+=notesHTML(nt);
     if(last&&last.start){}
-    else if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+(sug?(sug.dir==='up'?' · <b class="up">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↑</b>':' · stay at '+fmtW(sug.w)+' '+esc(S.program.unit)):'')+'</div>';
+    else if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+(sug?(sug.dir==='up'?' · <b class="up">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↑</b>':sug.dir==='down'?' · <b class="dn">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↓</b>':' · stay at '+fmtW(sug.w)+' '+esc(S.program.unit)):'')+'</div>';
     else h+='<div class="last">First time doing this one. Next time you\'ll see these numbers under each set.</div>';
     if(warmCount(it.warmup))h+='<div class="warmline">Warm-up <b>'+esc(it.warmup)+' set'+(it.warmup.trim()==='1'?'':'s')+'</b> first, then your working sets</div>';
     h+='<div class="sets"><div class="h">Set</div><div class="h">'+u+'</div>'+(it.sides?'<div class="h lr lrh"><span>L</span><span>R</span></div>':'<div class="h">Reps</div>')+'<div class="h">RIR</div><div class="h">Done</div>';
@@ -515,7 +515,7 @@ function vWorkout(){
       const lab=String(j+1);
       const nm=esc(pn)+(kind==='warm'?' warm-up '+(j+1):' set '+(j+1));
       return'<div class="setn'+(kind==='warm'?' wu':'')+'">'+lab+'</div>'+
-        '<input class="'+dc+'" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-in="w" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.w)+'" placeholder="'+esc(kind!=='warm'&&sug&&sug.dir==='up'?fmtW(sug.w):(ls.w||''))+'" aria-label="'+nm+' weight">'+
+        '<input class="'+dc+'" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-in="w" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.w)+'" placeholder="'+esc(kind!=='warm'&&sug&&(sug.dir==='up'||sug.dir==='down')?fmtW(sug.w):(ls.w||''))+'" aria-label="'+nm+' weight">'+
         (kind!=='warm'&&it.sides?'<div class="lr">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="next" autocomplete="off" data-in="rl" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.L||'')+'" placeholder="'+esc(sideReps(it.reps)||ls.L||ls.r||'')+'" aria-label="'+nm+' left reps, target '+esc(it.reps||'')+'">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="rr" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.R||'')+'" placeholder="'+esc(sideReps(it.reps)||ls.R||ls.r||'')+'" aria-label="'+nm+' right reps, target '+esc(it.reps||'')+'">'+'</div>':'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(it.reps||ls.r||'')+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">')+
         '<div class="rirc'+(tr===''?' none':'')+'" aria-label="Target RIR '+esc(tr||'none')+'">'+esc(tr===''?'–':tr)+'</div>'+
         '<button class="chk'+(st.done?' on':'')+(kind==='warm'?' wu':'')+'" data-act="done" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" aria-pressed="'+st.done+'" aria-label="Mark '+nm+' done">✓</button>';
@@ -997,16 +997,22 @@ function stepFor(name){
   return num((p.incDefaults||INC_DEF)[e]||INC_DEF[e]);
 }
 const fmtW=x=>String(Math.round(x*100)/100);
-// Double progression: every set at your top weight last time reached the top of the rep range -> go up one step.
+// Suggested next weight for this slot, from last time in the same slot:
+//  - estimate strength from your best set at the top weight (weight x (1 + reps/30))
+//  - work out the weight for the middle of this slot's rep range
+//  - round to a weight your gym has (your step), cautiously:
+//    beat the range on every set -> at least one step up; best set short of the range -> at least one step down
 function suggestFor(it,last){
   if(!last||last.start)return null;
   const nums=String(it.reps||'').match(/\d+/g);if(!nums)return null;
-  const lo=+nums[0],hi=+nums[nums.length-1];
+  const lo=+nums[0],hi=+nums[nums.length-1],mid=(lo+hi)/2;
   const sets=(last.sets||[]).filter(x=>num(x.w)>0&&parseInt(x.r)>0);if(!sets.length)return null;
   const top=Math.max(...sets.map(x=>num(x.w))),atTop=sets.filter(x=>num(x.w)===top);
-  const step=stepFor(perfName(it));
-  if(step>0&&atTop.every(x=>parseInt(x.r)>=hi))return{dir:'up',w:top+step,step};
-  return{dir:atTop.some(x=>parseInt(x.r)<lo)?'low':'hold',w:top,step};
+  const step=stepFor(perfName(it)),bestR=Math.max(...atTop.map(x=>parseInt(x.r)));
+  const want=Math.max(...atTop.map(x=>e1rm(x.w,x.r)))/(1+mid/30);
+  if(step>0&&atTop.every(x=>parseInt(x.r)>=hi)){const k=Math.max(1,Math.floor((want-top)/step+1e-9));return{dir:'up',w:top+k*step,step}}
+  if(step>0&&bestR<lo){const k=Math.min(-1,Math.ceil((want-top)/step-1e-9)),w=top+k*step;if(w>0)return{dir:'down',w,step}}
+  return{dir:bestR<lo?'low':'hold',w:top,step};
 }
 // One series: best set per session as estimated 1-rep max, oldest to newest. Tap a point for the details.
 function progressChart(rows){
@@ -1087,7 +1093,7 @@ app.addEventListener('click',e=>{
       st.done=!st.done;
       if(st.done){
         const last=prevFor(perfName(it),s,it.sid),ls=last&&(warm?last.warm:last.sets)[j];
-        {const sg=warm?null:suggestFor(it,last);if(!st.w){if(sg&&sg.dir==='up')st.w=fmtW(sg.w);else if(ls&&ls.w)st.w=ls.w}}
+        {const sg=warm?null:suggestFor(it,last);if(!st.w){if(sg&&(sg.dir==='up'||sg.dir==='down'))st.w=fmtW(sg.w);else if(ls&&ls.w)st.w=ls.w}}
         if(!warm&&it.sides){if(!st.L&&!st.R){const one=/^\d+$/.test(String(it.reps).trim())?String(it.reps).trim():'';st.L=one||(ls&&(ls.L||ls.r))||'';st.R=one||(ls&&(ls.R||ls.r))||'';st.r=sideMin(st)}}
         else if(!st.r){if(!warm&&/^\d+$/.test(String(it.reps).trim()))st.r=String(it.reps).trim();else if(ls&&ls.r)st.r=ls.r}
         if(it.rest&&!warm)startRest(it.rest,perfName(it));
