@@ -38,6 +38,7 @@ const RATE=['Not rated','Too easy','Easy','Just right','Hard','Too difficult'];
 const perfName=it=>it.swap||it.name;
 const normSets=a=>(Array.isArray(a)?a:[]).filter(Boolean).slice(0,20).map(z=>{const o={w:String(z.w==null?'':z.w).slice(0,12),r:String(z.r==null?'':z.r).slice(0,12),done:!!z.done};if(z.L||z.R){o.L=String(z.L||'').slice(0,12);o.R=String(z.R||'').slice(0,12)}return o});
 // the weaker side is what counts for progress
+function sideReps(t){const m=String(t||'').match(/\d+(\s*-\s*\d+)?/);return m?m[0].replace(/\s+/g,''):''}
 function sideMin(st){const a=parseInt(st.L),b=parseInt(st.R);return a>=0&&b>=0?String(Math.min(a,b)):a>=0?String(a):b>=0?String(b):''}
 const normRirs=a=>(Array.isArray(a)?a:[]).slice(0,12).map(v=>String(v==null?'':v).trim().slice(0,10));
 function normSubs(a){return(Array.isArray(a)?a:[]).filter(z=>z&&String(z.name||'').trim()).slice(0,10).map(z=>({name:String(z.name).trim().slice(0,80),video:String(z.video||'').slice(0,600),notes:String(z.notes||'').slice(0,2000)}))}
@@ -505,7 +506,7 @@ function vWorkout(){
     else if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+(sug?(sug.dir==='up'?' · <b class="up">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↑</b>':' · stay at '+fmtW(sug.w)+' '+esc(S.program.unit)):'')+'</div>';
     else h+='<div class="last">First time doing this one. Next time you\'ll see these numbers under each set.</div>';
     if(warmCount(it.warmup))h+='<div class="warmline">Warm-up <b>'+esc(it.warmup)+' set'+(it.warmup.trim()==='1'?'':'s')+'</b> first, then your working sets</div>';
-    h+='<div class="sets"><div class="h">Set</div><div class="h">'+u+'</div><div class="h">Reps</div><div class="h">RIR</div><div class="h">Done</div>';
+    h+='<div class="sets"><div class="h">Set</div><div class="h">'+u+'</div>'+(it.sides?'<div class="h lr lrh"><span>L</span><span>R</span></div>':'<div class="h">Reps</div>')+'<div class="h">RIR</div><div class="h">Done</div>';
     const row=(st,j,kind)=>{
       const src=last?(kind==='warm'?last.warm:last.sets):null;
       const ls=(src&&src[j])||{};
@@ -515,7 +516,7 @@ function vWorkout(){
       const nm=esc(pn)+(kind==='warm'?' warm-up '+(j+1):' set '+(j+1));
       return'<div class="setn'+(kind==='warm'?' wu':'')+'">'+lab+'</div>'+
         '<input class="'+dc+'" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-in="w" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.w)+'" placeholder="'+esc(kind!=='warm'&&sug&&sug.dir==='up'?fmtW(sug.w):(ls.w||''))+'" aria-label="'+nm+' weight">'+
-        (kind!=='warm'&&it.sides?'<div class="lr">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="next" autocomplete="off" data-in="rl" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.L||'')+'" placeholder="L" aria-label="'+nm+' left reps, target '+esc(it.reps||'')+'">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="rr" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.R||'')+'" placeholder="R" aria-label="'+nm+' right reps, target '+esc(it.reps||'')+'">'+'</div>':'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(it.reps||ls.r||'')+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">')+
+        (kind!=='warm'&&it.sides?'<div class="lr">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="next" autocomplete="off" data-in="rl" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.L||'')+'" placeholder="'+esc(sideReps(it.reps)||ls.L||ls.r||'')+'" aria-label="'+nm+' left reps, target '+esc(it.reps||'')+'">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="rr" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.R||'')+'" placeholder="'+esc(sideReps(it.reps)||ls.R||ls.r||'')+'" aria-label="'+nm+' right reps, target '+esc(it.reps||'')+'">'+'</div>':'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(it.reps||ls.r||'')+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">')+
         '<div class="rirc'+(tr===''?' none':'')+'" aria-label="Target RIR '+esc(tr||'none')+'">'+esc(tr===''?'–':tr)+'</div>'+
         '<button class="chk'+(st.done?' on':'')+(kind==='warm'?' wu':'')+'" data-act="done" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" aria-pressed="'+st.done+'" aria-label="Mark '+nm+' done">✓</button>';
     };
