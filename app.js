@@ -21,7 +21,7 @@ function safeUrl(u){u=String(u||'').trim();if(!u)return'';if(!/^https?:\/\//i.te
  weeks:   {n:{n, days:{dayId:[slot]}}}   slot: {sid, exId, warmup, sets, reps, rirs[], rest}
  sessions:{id:{id,cycle,week,dayId,dayName,date,finished,note,items[]}}
 */
-let S={program:defProgram(),weeks:{},sessions:{},templates:{}};
+let S={program:defProgram(),weeks:{},sessions:{},templates:{},programs:{},active:''};
 const DEFAULT_TEMPLATE='Min Max Phase 2';
 function normTemplates(m){const o={};if(m&&typeof m==='object')for(const k in m){const t=m[k];if(!t||!t.program)continue;const id=String(t.id||k);
   const np=normProgram(t.program);o[id]={id,name:String(t.name||'Template').slice(0,60),created:+t.created||Date.now(),program:{days:np.days,lib:np.lib,length:np.length,unit:np.unit,starts:np.starts,incs:np.incs,incDefaults:np.incDefaults},weeks:normWeeks(t.weeks)}}return o}
@@ -36,11 +36,13 @@ function loadTemplate(t){
 function defProgram(){return{v:2,unit:'kg',length:12,days:[],lib:{},cycle:{num:1,week:1},cycles:{}}}
 const RATE=['Not rated','Too easy','Easy','Just right','Hard','Too difficult'];
 const perfName=it=>it.swap||it.name;
-const normSets=a=>(Array.isArray(a)?a:[]).filter(Boolean).slice(0,20).map(z=>({w:String(z.w==null?'':z.w).slice(0,12),r:String(z.r==null?'':z.r).slice(0,12),done:!!z.done}));
+const normSets=a=>(Array.isArray(a)?a:[]).filter(Boolean).slice(0,20).map(z=>{const o={w:String(z.w==null?'':z.w).slice(0,12),r:String(z.r==null?'':z.r).slice(0,12),done:!!z.done};if(z.L||z.R){o.L=String(z.L||'').slice(0,12);o.R=String(z.R||'').slice(0,12)}return o});
+// the weaker side is what counts for progress
+function sideMin(st){const a=parseInt(st.L),b=parseInt(st.R);return a>=0&&b>=0?String(Math.min(a,b)):a>=0?String(a):b>=0?String(b):''}
 const normRirs=a=>(Array.isArray(a)?a:[]).slice(0,12).map(v=>String(v==null?'':v).trim().slice(0,10));
 function normSubs(a){return(Array.isArray(a)?a:[]).filter(z=>z&&String(z.name||'').trim()).slice(0,10).map(z=>({name:String(z.name).trim().slice(0,80),video:String(z.video||'').slice(0,600),notes:String(z.notes||'').slice(0,2000)}))}
 function warmCount(t){const n=String(t||'').match(/\d+/g);return n?Math.min(5,Math.max(...n.map(Number))):0}
-function normLib(x){return{id:String(x.id),name:String(x.name||'Exercise').slice(0,80),video:String(x.video||'').slice(0,600),notes:String(x.notes||'').slice(0,2000),subs:normSubs(x.subs)}}
+function normLib(x){return{sides:!!x.sides,id:String(x.id),name:String(x.name||'Exercise').slice(0,80),video:String(x.video||'').slice(0,600),notes:String(x.notes||'').slice(0,2000),subs:normSubs(x.subs)}}
 function normSlot(x){const sets=clamp(parseInt(x.sets)||3,1,12);return{sid:String(x.sid||('q'+nid())),exId:String(x.exId||''),warmup:String(x.warmup==null?'':x.warmup).slice(0,10),sets,reps:String(x.reps||'').slice(0,20),rirs:normRirs(x.rirs).slice(0,sets),rest:clamp(parseInt(x.rest)||0,0,900),ss:String(x.ss||'').trim().slice(0,10),tech:String(x.tech||'').trim().slice(0,60)}}
 function normWeek(w,n){const o={n:+n,days:{}};if(w&&w.days&&typeof w.days==='object'){for(const k in w.days){if(Array.isArray(w.days[k]))o.days[k]=w.days[k].filter(x=>x&&x.exId).slice(0,30).map(normSlot)}}return o}
 function normWeeks(m){const o={};if(m&&typeof m==='object'){for(const k in m){const n=parseInt(k);if(n>0&&n<=52)o[n]=normWeek(m[k],n)}}return o}
@@ -71,13 +73,47 @@ function migrateLegacy(p){
 }
 function normSession(x,id){
   if(!x||typeof x!=='object')return null;
-  const s={id:String(id||x.id||('s'+nid())),cycle:Math.max(1,parseInt(x.cycle)||1),week:Math.max(1,parseInt(x.week)||1),dayId:String(x.dayId||''),dayName:String(x.dayName||'Workout'),date:+x.date||Date.now(),finished:!!x.finished,note:String(x.note||'').slice(0,3000),items:[]};
-  if(Array.isArray(x.items))s.items=x.items.filter(Boolean).slice(0,40).map(it=>({exId:String(it.exId||''),sid:String(it.sid||''),name:String(it.name||'Exercise'),warmup:String(it.warmup||''),planSets:parseInt(it.planSets)||0,reps:String(it.reps||''),target:String(it.target||''),rest:Math.max(0,parseInt(it.rest)||0),ss:String(it.ss||'').slice(0,10),tech:String(it.tech||'').slice(0,60),video:String(it.video||''),subs:normSubs(it.subs),rirs:normRirs(it.rirs),swap:String(it.swap||'').slice(0,80),swapVideo:String(it.swapVideo||'').slice(0,600),rating:clamp(parseInt(it.rating)||0,0,5),warm:normSets(it.warm),sets:normSets(it.sets)}));
+  const s={id:String(id||x.id||('s'+nid())),cycle:Math.max(1,parseInt(x.cycle)||1),week:Math.max(1,parseInt(x.week)||1),dayId:String(x.dayId||''),dayName:String(x.dayName||'Workout'),prog:String(x.prog||'').slice(0,40),date:+x.date||Date.now(),finished:!!x.finished,note:String(x.note||'').slice(0,3000),items:[]};
+  if(Array.isArray(x.items))s.items=x.items.filter(Boolean).slice(0,40).map(it=>({exId:String(it.exId||''),sid:String(it.sid||''),name:String(it.name||'Exercise'),warmup:String(it.warmup||''),planSets:parseInt(it.planSets)||0,reps:String(it.reps||''),target:String(it.target||''),rest:Math.max(0,parseInt(it.rest)||0),ss:String(it.ss||'').slice(0,10),tech:String(it.tech||'').slice(0,60),video:String(it.video||''),subs:normSubs(it.subs),rirs:normRirs(it.rirs),swap:String(it.swap||'').slice(0,80),swapVideo:String(it.swapVideo||'').slice(0,600),rating:clamp(parseInt(it.rating)||0,0,5),sides:!!it.sides,warm:normSets(it.warm),sets:normSets(it.sets)}));
   return s;
 }
 function normSessions(m){const o={};if(m&&typeof m==='object'){for(const k in m){const s=normSession(m[k],m[k]&&m[k].id||k);if(s)o[s.id]=s}}return o}
 function loadLocal(){try{const j=JSON.parse(localStorage.getItem(LS)||'null');if(j&&j.program)return j}catch(e){}return null}
 function saveLocal(){try{const ss={};for(const k in S.sessions)if(!S.sessions[k].draft)ss[k]=S.sessions[k];localStorage.setItem(LS,JSON.stringify(Object.assign({},S,{sessions:ss})));ghSchedule();return true}catch(e){return false}}
+// Older data had one plan: it becomes the first programme, and its workouts are tagged with it.
+function initPrograms(o){
+  const ps={};
+  if(o&&o.programs&&typeof o.programs==='object')for(const k in o.programs){const x=o.programs[k];if(!x||!x.program)continue;
+    ps[k]={id:k,name:String(x.name||'Programme').slice(0,60),program:normProgram(x.program),weeks:normWeeks(x.weeks)}}
+  let act=o&&o.active&&ps[o.active]?o.active:'';
+  if(!act){act=(o&&o.active)||'p-main';ps[act]={id:act,name:(Object.values(S.templates||{})[0]||{}).name||'My programme',program:S.program,weeks:S.weeks}}
+  ps[act].program=S.program;ps[act].weeks=S.weeks;
+  S.programs=ps;S.active=act;
+  for(const k in S.sessions){if(!S.sessions[k].prog)S.sessions[k].prog=act}
+}
+const progList=()=>Object.values(S.programs||{}).sort((a,b)=>a.name.localeCompare(b.name));
+const progName=()=>(S.programs[S.active]||{}).name||'Programme';
+function switchProgram(id){
+  if(!S.programs[id]||id===S.active)return;
+  try{stopRest()}catch(e){}
+  S.programs[S.active].program=S.program;S.programs[S.active].weeks=S.weeks;
+  S.active=id;S.program=S.programs[id].program;S.weeks=S.programs[id].weeks;
+  view.pweek=S.program.cycle.week;try{progOpen.clear()}catch(e){}
+  for(const k in S.sessions)if(S.sessions[k].draft)delete S.sessions[k];
+  saveLocal();
+}
+function createProgram(name,from){
+  const id='p'+nid();let program,weeks;
+  if(from==='copy'){program=clone(S.program);weeks=clone(S.weeks)}
+  else if(S.templates[from]){const t=clone(S.templates[from]);program=normProgram(t.program);weeks=normWeeks(t.weeks)}
+  else{program=normProgram({});weeks={}}
+  program.cycle={num:1,week:1};program.cycles={};
+  S.programs[id]={id,name:String(name).trim().slice(0,60),program,weeks};
+  switchProgram(id);
+}
+function progSelect(){
+  return'<label class="progsel"><span class="sr-only">Programme</span><select class="field" data-in="progSel" aria-label="Programme">'+progList().map(x=>'<option value="'+esc(x.id)+'"'+(x.id===S.active?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></label>';
+}
 function applyLoaded(o){
   if(isLegacy(o.program)){const m=migrateLegacy(o.program);S.program=m.program;S.weeks=m.weeks;return true}
   S.program=normProgram(o.program);S.weeks=normWeeks(o.weeks);return false;
@@ -87,8 +123,9 @@ const deleted=new Set();
 const uploading=new Set();
 const sessList=()=>Object.values(S.sessions).filter(s=>!deleted.has(s.id)&&!s.draft).sort((a,b)=>b.date-a.date);
 function touch(s){if(s&&s.draft){delete s.draft;s.date=Date.now()}}
-const openSessionFor=dayId=>sessList().find(s=>s.dayId===dayId&&!s.finished);
-const finishedFor=(c,w,dayId)=>sessList().find(s=>s.cycle===c&&s.week===w&&s.dayId===dayId&&s.finished);
+const progSess=()=>sessList().filter(s=>s.prog===S.active);
+const openSessionFor=dayId=>progSess().find(s=>s.dayId===dayId&&!s.finished);
+const finishedFor=(c,w,dayId)=>progSess().find(s=>s.cycle===c&&s.week===w&&s.dayId===dayId&&s.finished);
 const findDay=id=>S.program.days.find(d=>d.id===id);
 const libEx=id=>S.program.lib[id]||null;
 const libName=id=>{const x=libEx(id);return x?x.name:'Exercise'};
@@ -191,6 +228,7 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 async function boot(){
   const local=loadLocal();
   if(local){S.sessions=normSessions(local.sessions);S.templates=normTemplates(local.templates);if(applyLoaded(local))saveLocal()}
+  initPrograms(local||{});
   render();
   mode='local';setStatus('local');
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
@@ -317,7 +355,7 @@ function itemPills(it){
   if(it.tech)h+='<span class="pill tech">Last set: '+esc(it.tech)+'</span>';
   return h+a.map(x=>'<span class="pill">'+esc(x)+'</span>').join('');
 }
-const setStr=sets=>sets.filter(x=>x.w||x.r).map(x=>esc(x.w||'–')+'×'+esc(x.r||'–')).join(' · ');
+const setStr=sets=>sets.filter(x=>x.w||x.r).map(x=>esc(x.w||'–')+'×'+(x.L||x.R?esc(x.L||'–')+'/'+esc(x.R||'–'):esc(x.r||'–'))).join(' · ');
 
 /* ----- home ----- */
 function weekStrip(c,cur){
@@ -328,6 +366,7 @@ function weekStrip(c,cur){
 function vHome(){
   const p=S.program,c=p.cycle;
   let h=top('Workouts');
+  if(progList().length>1)h+='<div class="progbar">'+progSelect()+'</div>';
   if(!p.days.length){
     return h+'<div class="card empty"><h2>Set up your program</h2><p class="sub">Add your training days, then plan each week: exercises, warm-ups, sets, reps, RIR per set and rest times. After that, tap a day at the gym and everything for that week is ready to log.</p><button class="btn primary block" data-act="tab" data-tab="program">Set up program</button></div>';
   }
@@ -342,7 +381,7 @@ function vHome(){
   }else if(c.week===p.length)acts.push('<button class="btn block" data-act="finishCycle" data-confirm>Finish cycle '+c.num+' & see stats</button>');
   if(acts.length)h+='<div class="acts">'+acts.join('')+'</div>';
   const pc=c.num-1,pm=p.cycles[pc];
-  if(pc>=1&&pm&&pm.done&&!sessList().some(s=>s.cycle===c.num))h+='<button class="linkbtn" data-act="undoCycle" data-confirm>Undo finishing cycle '+pc+'</button>';
+  if(pc>=1&&pm&&pm.done&&!progSess().some(s=>s.cycle===c.num))h+='<button class="linkbtn" data-act="undoCycle" data-confirm>Undo finishing cycle '+pc+'</button>';
   h+='</div>';
   if(!g.planned)h+='<div class="card"><h3>Nothing planned for week '+c.week+'</h3><p class="sub">Add this week\'s exercises in Program, or copy them from the week before.</p><button class="btn primary block" data-act="planWeek" data-n="'+c.week+'">Plan week '+c.week+'</button></div>';
   for(const d of p.days){
@@ -476,19 +515,19 @@ function vWorkout(){
       const nm=esc(pn)+(kind==='warm'?' warm-up '+(j+1):' set '+(j+1));
       return'<div class="setn'+(kind==='warm'?' wu':'')+'">'+lab+'</div>'+
         '<input class="'+dc+'" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-in="w" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.w)+'" placeholder="'+esc(kind!=='warm'&&sug&&sug.dir==='up'?fmtW(sug.w):(ls.w||''))+'" aria-label="'+nm+' weight">'+
-        '<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(it.reps||ls.r||'')+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">'+
+        (kind!=='warm'&&it.sides?'<div class="lr">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="next" autocomplete="off" data-in="rl" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.L||'')+'" placeholder="L" aria-label="'+nm+' left reps, target '+esc(it.reps||'')+'">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="rr" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.R||'')+'" placeholder="R" aria-label="'+nm+' right reps, target '+esc(it.reps||'')+'">'+'</div>':'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(it.reps||ls.r||'')+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">')+
         '<div class="rirc'+(tr===''?' none':'')+'" aria-label="Target RIR '+esc(tr||'none')+'">'+esc(tr===''?'–':tr)+'</div>'+
         '<button class="chk'+(st.done?' on':'')+(kind==='warm'?' wu':'')+'" data-act="done" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" aria-pressed="'+st.done+'" aria-label="Mark '+nm+' done">✓</button>';
     };
     it.sets.forEach((st,j)=>{
       h+=row(st,j,'work');
       const ls=last&&last.sets[j],isLast=j===it.sets.length-1;
-      const prev=ls&&(ls.w||ls.r)?(last.start?'Target':'Last')+': <b>'+esc(ls.w||'–')+' '+esc(S.program.unit)+' × '+esc(ls.r||'–')+'</b>':'';
+      const prev=ls&&(ls.w||ls.r)?(last.start?'Target':'Last')+': <b>'+esc(ls.w||'–')+' '+esc(S.program.unit)+' × '+(ls.L||ls.R?'L '+esc(ls.L||'–')+' / R '+esc(ls.R||'–'):esc(ls.r||'–'))+'</b>':'';
       const tech=isLast&&it.tech?'<span class="techtag">Last set: '+esc(it.tech)+'</span>':'';
       if(prev||tech)h+='<div class="prev">'+tech+(prev?'<span>'+prev+' <i id="cmp-'+i+'-'+j+'">'+cmpHTML(st,ls)+'</i></span>':'')+'</div>';
       if(isLast&&dropInfo(it))h+='<div class="dropcalc" id="drop-'+i+'">'+dropHTML(it)+'</div>';
     });
-    h+='</div><div class="exf"><button class="btn sm ghost" data-act="addSet" data-i="'+i+'">+ Set</button>'+(it.sets.length>1?'<button class="btn sm ghost" data-act="rmSet" data-i="'+i+'">− Set</button>':'')+'</div>';
+    h+='</div><div class="exf"><button class="btn sm ghost" data-act="addSet" data-i="'+i+'">+ Set</button>'+(it.sets.length>1?'<button class="btn sm ghost" data-act="rmSet" data-i="'+i+'">− Set</button>':'')+'<button class="btn sm ghost'+(it.sides?' swapped':'')+'" data-act="sidesTog" data-i="'+i+'" aria-pressed="'+!!it.sides+'" title="Log left and right separately">'+(it.sides?'L / R on':'L / R')+'</button></div>';
     {const ro=!!(view.rateOpen&&view.rateOpen[i]);
      h+=ro?rateHTML(it,i)+'<button class="linkbtn" data-act="rateToggle" data-i="'+i+'">Hide</button>'
        :'<div class="rate"><button class="ratebtn" data-act="rateToggle" data-i="'+i+'" aria-expanded="false"><span>How did it feel?</span><span class="rv r'+(it.rating||0)+'">'+(it.rating?RATE[it.rating]:'Tap to rate')+' ›</span></button></div>';}
@@ -521,7 +560,7 @@ function vHistory(){
     const g='Cycle '+s.cycle+' · Week '+s.week;
     if(g!==grp){grp=g;h+='<div class="wk">'+g+'</div>'}
     let done=0,total=0;s.items.forEach(it=>{total+=it.sets.length;done+=it.sets.filter(x=>x.done).length});
-    h+='<button class="card day" data-act="open" data-id="'+esc(s.id)+'"><div><h2>'+esc(s.dayName)+'</h2><div class="sub">'+fmtDate(s.date)+' · '+done+'/'+total+' sets done</div></div>'+(s.finished?'<span class="chev">›</span>':'<span class="badge">In progress</span>')+'</button>';
+    h+='<button class="card day" data-act="open" data-id="'+esc(s.id)+'"><div><h2>'+esc(s.dayName)+'</h2><div class="sub">'+(progList().length>1&&S.programs[s.prog]?esc(S.programs[s.prog].name)+' · ':'')+fmtDate(s.date)+' · '+done+'/'+total+' sets done</div></div>'+(s.finished?'<span class="chev">›</span>':'<span class="badge">In progress</span>')+'</button>';
   }
   return h;
 }
@@ -532,6 +571,12 @@ const progOpen=new Set();
 function vProgram(){
   const p=S.program;
   let h=top('Program');
+  h+='<div class="progbar">'+progSelect()+'<button class="btn sm" data-act="progNew" aria-expanded="'+!!view.newProg+'">+ New</button></div>';
+  if(view.newProg){const np=view.newProg;
+    h+='<div class="card"><h2 style="margin:0 0 10px">New programme</h2><label class="lbl">Name<input class="field" id="npname" value="'+esc(np.name||'')+'" maxlength="60" placeholder="e.g. Cardio, Phase 3" autocomplete="off"></label>'+
+      '<label class="lbl">Start from<select class="field" id="npfrom"><option value="blank">Blank: set it up from scratch</option><option value="copy">Copy of '+esc(progName())+'</option>'+Object.values(S.templates).map(t=>'<option value="'+esc(t.id)+'">Template: '+esc(t.name)+'</option>').join('')+'</select></label>'+
+      '<p class="sub" style="margin:0 0 10px">It starts at cycle 1, week 1. Your history stays, and switching back picks up where you left off.</p>'+
+      '<div class="row"><button class="btn sm primary" data-act="progCreate">Create and switch</button><button class="btn sm ghost" data-act="progNew">Cancel</button></div></div>'}
   if(!p.days.length){
     h+='<div class="card"><h2>Start your program</h2><p class="sub">Create your training days first. Then pick a week and add that week\'s exercises with their sets, reps, RIR and rest. Copy a week forward and only change what\'s different.</p><label class="btn primary block">Load backup file<input type="file" accept=".json,application/json,text/plain" data-in="bkfile" hidden></label><button class="btn block mt" data-act="showRestore">Paste a backup</button><button class="btn block mt" data-act="quick">Add empty Upper, Lower, Push, Pull, Arms</button><button class="btn block mt" data-act="addDay">Add a single day</button></div>';
     return h+settingsHTML();
@@ -565,6 +610,7 @@ function settingsHTML(){
   h+='<div class="lenrow"><div><div>Program length</div><div class="sub">Weeks in one cycle</div></div><div class="row"><button class="btn icon sm" data-act="len" data-d="-1" aria-label="Fewer weeks"'+(p.length<=1?' disabled':'')+'>−</button><span class="num" style="font-size:22px;min-width:34px;text-align:center">'+p.length+'</span><button class="btn icon sm" data-act="len" data-d="1" aria-label="More weeks"'+(p.length>=52?' disabled':'')+'>+</button></div></div></div>';
   {const st=S.program.starts||{},ks=Object.keys(st).sort();
    if(ks.length){h+='<div class="sect">Starting points</div><div class="card"><details class="notes" style="margin-top:0"><summary>'+ks.length+' exercises have a starting point</summary><p class="sub" style="margin:6px 0 8px">Shown as a guide until you log that exercise; then your own history takes over. Change one by tapping the exercise above.</p>'+ks.map(k=>'<div class="hrow"><div style="text-transform:capitalize">'+esc(k)+'</div><div class="v">'+esc(st[k].w)+' '+esc(S.program.unit)+(st[k].r?' × '+esc(st[k].r):'')+'</div></div>').join('')+'</details></div>'}}
+  h+='<div class="sect">This programme</div><div class="card"><label class="lbl">Name<input class="field" data-in="progName" value="'+esc(progName())+'" maxlength="60" autocomplete="off"></label>'+(progList().length>1?'<button class="btn sm ghost danger" data-act="progDel" data-confirm>Delete this programme</button><p class="sub" style="margin:8px 0 0">Its plan is removed. Workouts you logged in it stay in History.</p>':'<p class="sub" style="margin:0">Create more programmes with + New at the top, and switch between them there or on the Workouts tab.</p>')+'</div>';
   h+='<div class="sect">Templates</div><div class="card"><p class="sub" style="margin-top:0">A template saves your whole plan: days, exercises, notes, substitutions and every week\'s sets, reps, RIR, rest and techniques. Your workout history isn\'t part of it.</p>';
   const tpls=Object.values(S.templates).sort((a,b)=>a.created-b.created);
   tpls.forEach(t=>{const nd=t.program.days.length,ne=new Set(Object.values(t.weeks).flatMap(w=>Object.values(w.days).flat().map(x=>x.exId))).size;
@@ -602,6 +648,7 @@ function vExercise(){
   h+='<label class="lbl">Name<input data-in="name" value="'+esc(d.name)+'" placeholder="e.g. Incline dumbbell press" autocomplete="off" maxlength="80"></label>';
   h+='<label class="lbl">Video link<input data-in="video" type="url" inputmode="url" autocapitalize="off" autocorrect="off" value="'+esc(d.video)+'" placeholder="Paste the link from your PDF"></label>';
   h+='<label class="lbl" style="margin-bottom:0">Notes<textarea data-in="notes" rows="3" placeholder="Form cues, set-up tips…">'+esc(d.notes)+'</textarea></label>';
+  h+='<label class="toggle" style="margin-top:12px"><input type="checkbox" data-in="sides"'+(d.sides?' checked':'')+'><span>Log left and right separately<span class="sub" style="display:block">Each set gets L and R reps boxes. The weaker side counts for progress.</span></span></label>';
   h+='<div class="grid2" style="margin-top:12px"><label class="lbl" style="margin-bottom:0">Starting '+esc(p.unit)+'<input data-in="startW" inputmode="decimal" value="'+esc(d.startW||'')+'" placeholder="–" maxlength="12" autocomplete="off"></label><label class="lbl" style="margin-bottom:0">Starting reps<input data-in="startR" inputmode="numeric" value="'+esc(d.startR||'')+'" placeholder="–" maxlength="12" autocomplete="off"></label></div><label class="lbl" style="margin:12px 0 0">Weight step ('+esc(p.unit)+')<input data-in="incStep" inputmode="decimal" value="'+esc(d.incStep||'')+'" placeholder="'+(equipOf(d.name)==='bw'?'none (bodyweight)':esc((p.incDefaults||INC_DEF)[equipOf(d.name)])+' ('+INC_LABEL[equipOf(d.name)].toLowerCase()+' default)')+'" maxlength="8" autocomplete="off"></label><p class="hint" style="margin:6px 0 0">The smallest jump your gym allows on this exercise; used to suggest your next weight. Starting kg/reps: a guide shown until you have logged this exercise. After that, your last session is used.</p>';
   if(d.libId!=='new')h+='<p class="hint" style="margin:10px 0 0">Name, video, notes and substitutions are shared by every week that uses this exercise. To use a different exercise from this week on, pick it above or choose "New exercise".</p>';
   h+='</div>';
@@ -623,17 +670,17 @@ function vExercise(){
   }
   return h;
 }
-function libToDraft(d,id){const x=libEx(id);if(x){d.name=x.name;d.video=x.video;d.notes=x.notes;d.subs=clone(x.subs)}else{d.name='';d.video='';d.notes='';d.subs=[]}const st=x&&(S.program.starts||{})[norm(x.name)];d.startW=st?st.w:'';d.startR=st?st.r:'';d.incStep=x?((S.program.incs||{})[norm(x.name)]||''):''}
+function libToDraft(d,id){const x=libEx(id);if(x){d.name=x.name;d.video=x.video;d.notes=x.notes;d.subs=clone(x.subs)}else{d.name='';d.video='';d.notes='';d.subs=[]}const st=x&&(S.program.starts||{})[norm(x.name)];d.startW=st?st.w:'';d.startR=st?st.r:'';d.incStep=x?((S.program.incs||{})[norm(x.name)]||''):'';d.sides=!!(x&&x.sides)}
 // When an existing exercise is picked for a new slot, start from its most recent targets.
 function latestSlotFor(exId,before){for(let n=before;n>=1;n--){const w=S.weeks[n];if(!w)continue;for(const k in w.days){const s=w.days[k].find(x=>x.exId===exId);if(s)return s}}return null}
 
 /* ----- stats ----- */
 function e1rm(w,r){w=num(w);r=parseInt(r);if(!(w>0)||!(r>0))return 0;return r===1?w:w*(1+r/30)}
-function cycleList(){const set=new Set(sessList().map(s=>s.cycle));set.add(S.program.cycle.num);Object.keys(S.program.cycles).forEach(k=>set.add(+k));return[...set].filter(n=>n>0).sort((a,b)=>a-b)}
+function cycleList(){const set=new Set(progSess().map(s=>s.cycle));set.add(S.program.cycle.num);Object.keys(S.program.cycles).forEach(k=>set.add(+k));return[...set].filter(n=>n>0).sort((a,b)=>a-b)}
 // upto: only count weeks 1..upto (to compare a cycle in progress with earlier cycles at the same point)
 function cycleStats(c,upto){
   const p=S.program;
-  const ss=sessList().filter(s=>s.cycle===c&&(!upto||s.week<=upto)).sort((a,b)=>a.date-b.date);
+  const ss=progSess().filter(s=>s.cycle===c&&(!upto||s.week<=upto)).sort((a,b)=>a.date-b.date);
   const fin=ss.filter(s=>s.finished);
   const meta=p.cycles[c]||{};
   const current=!upto&&c===p.cycle.num&&!meta.done;
@@ -680,6 +727,7 @@ function delta(cur,prev,opts){
 function vStats(){
   const p=S.program;
   let h=top('Stats');
+  if(progList().length>1)h+='<div class="progbar">'+progSelect()+'</div>';
   const cycles=cycleList();
   const c=view.cyc&&cycles.includes(view.cyc)?view.cyc:(()=>{const cur=cycleStats(p.cycle.num);if(cur.has)return p.cycle.num;const done=cycles.filter(n=>n<p.cycle.num);return done.length?done[done.length-1]:p.cycle.num})();
   if(cycles.length>1){h+='<div class="chips">';cycles.forEach(n=>{h+='<button class="chip has'+(n===c?' on':'')+'" data-act="cyc" data-n="'+n+'">Cycle '+n+'</button>'});h+='</div>'}
@@ -748,7 +796,7 @@ function startDay(dayId){
   if(!slots.length){toast('Nothing planned for '+d.name+' in week '+c.week);return go({name:'program',pweek:c.week})}
   const mk=n=>Array.from({length:n},()=>({w:'',r:'',done:false}));
   const s={id:'s'+nid(),cycle:c.num,week:c.week,dayId:d.id,dayName:d.name,date:Date.now(),finished:false,note:'',
-    items:slots.map(sl=>{const x=libEx(sl.exId)||{name:'Exercise',video:'',subs:[]};return{exId:sl.exId,sid:sl.sid,name:x.name,warmup:sl.warmup,planSets:sl.sets,reps:sl.reps,target:'',rest:sl.rest,ss:sl.ss||'',tech:sl.tech||'',video:x.video,subs:clone(x.subs),rirs:sl.rirs.slice(),swap:'',swapVideo:'',rating:0,warm:[],sets:mk(sl.sets)}})};
+    prog:S.active,items:slots.map(sl=>{const x=libEx(sl.exId)||{name:'Exercise',video:'',subs:[]};return{exId:sl.exId,sid:sl.sid,name:x.name,warmup:sl.warmup,planSets:sl.sets,reps:sl.reps,target:'',rest:sl.rest,ss:sl.ss||'',tech:sl.tech||'',video:x.video,subs:clone(x.subs),rirs:sl.rirs.slice(),swap:'',swapVideo:'',rating:0,sides:!!x.sides,warm:[],sets:mk(sl.sets)}})};
   for(const k in S.sessions)if(S.sessions[k].draft)delete S.sessions[k];
   s.draft=true;S.sessions[s.id]=s;
   go({name:'workout',id:s.id,back:{name:'home'}});
@@ -794,18 +842,20 @@ function restoreFrom(txt){
   let o=null;try{o=JSON.parse(txt||'')}catch(err){}
   if(o&&!o.program&&o.starts&&typeof o.starts==='object'){const n=mergeStarts(o.starts);toast('Loaded '+n+' starting points');return true}
   if(!o||!o.program){toast("That doesn't look like a backup from this tracker");return false}
-  const oldLib=clone(S.program.lib);
+  const oldLib=clone(S.program.lib),keepPs=S.programs,keepAct=S.active;
   applyLoaded(o);keepVideos(oldLib);
+  if(o.programs)initPrograms(o);else if(keepPs&&keepPs[keepAct]){S.programs=keepPs;S.active=keepAct;keepPs[keepAct].program=S.program;keepPs[keepAct].weeks=S.weeks}else initPrograms({});  {const t0=Object.values(normTemplates(o.templates))[0];if(t0&&S.programs[S.active]&&S.programs[S.active].name==='My programme')S.programs[S.active].name=t0.name}
   const ids=[];
-  (Array.isArray(o.sessions)?o.sessions:[]).forEach(x=>{const ss=normSession(x,x&&x.id);if(ss){deleted.delete(ss.id);S.sessions[ss.id]=ss;ids.push(ss.id)}});
+  (Array.isArray(o.sessions)?o.sessions:[]).forEach(x=>{const ss=normSession(x,x&&x.id);if(ss){if(!ss.prog)ss.prog=S.active;deleted.delete(ss.id);S.sessions[ss.id]=ss;ids.push(ss.id)}});
   Object.assign(S.templates,normTemplates(o.templates));
   let msg='Backup restored';
   if(!Object.keys(S.templates).length&&S.program.days.length){const t=snapshotTemplate(DEFAULT_TEMPLATE);S.templates[t.id]=t;msg+=' · saved as template "'+DEFAULT_TEMPLATE+'"'}
   saveProgram(0);saveWeeks(Object.keys(S.weeks).map(Number));uploadSessions(ids);saveLocal();
   view.restore=false;view.restoreText='';toast(msg);return true;
 }
-const backupJSON=()=>JSON.stringify({app:'workout-log',v:2,exported:Date.now(),program:S.program,weeks:S.weeks,sessions:sessList(),templates:S.templates});
+const backupJSON=()=>JSON.stringify({app:'workout-log',v:3,exported:Date.now(),program:S.program,weeks:S.weeks,sessions:sessList(),templates:S.templates,programs:S.programs,active:S.active});
 app.addEventListener('change',e=>{
+  if(e.target.dataset&&e.target.dataset.in==='progSel'){switchProgram(e.target.value);rerender();toast('Switched to '+progName());return}
   const t=e.target;if(!(t.dataset&&t.dataset.in==='bkfile')||!t.files||!t.files[0])return;
   const f=t.files[0];t.value='';
   f.text().then(txt=>{if(restoreFrom(txt)){view.pweek=S.program.cycle.week;rerender()}}).catch(()=>toast("Couldn't read that file"));
@@ -1037,11 +1087,13 @@ app.addEventListener('click',e=>{
       if(st.done){
         const last=prevFor(perfName(it),s,it.sid),ls=last&&(warm?last.warm:last.sets)[j];
         {const sg=warm?null:suggestFor(it,last);if(!st.w){if(sg&&sg.dir==='up')st.w=fmtW(sg.w);else if(ls&&ls.w)st.w=ls.w}}
-        if(!st.r){if(!warm&&/^\d+$/.test(String(it.reps).trim()))st.r=String(it.reps).trim();else if(ls&&ls.r)st.r=ls.r}
+        if(!warm&&it.sides){if(!st.L&&!st.R){const one=/^\d+$/.test(String(it.reps).trim())?String(it.reps).trim():'';st.L=one||(ls&&(ls.L||ls.r))||'';st.R=one||(ls&&(ls.R||ls.r))||'';st.r=sideMin(st)}}
+        else if(!st.r){if(!warm&&/^\d+$/.test(String(it.reps).trim()))st.r=String(it.reps).trim();else if(ls&&ls.r)st.r=ls.r}
         if(it.rest&&!warm)startRest(it.rest,perfName(it));
       }
       saveSession(s.id,300);rerender();break;
     }
+    case 'sidesTog':if(s){const it=s.items[i];it.sides=!it.sides;if(it.sides)it.sets.forEach(x=>{if(x.r&&!x.L&&!x.R){x.L=x.r;x.R=x.r}});saveSession(s.id);rerender();toast(it.sides?'Left and right logged separately':'One reps box per set')}break;
     case 'addSet':if(s){s.items[i].sets.push({w:'',r:'',done:false});saveSession(s.id);rerender()}break;
     case 'rmSet':if(s&&s.items[i].sets.length>1){s.items[i].sets.pop();saveSession(s.id);rerender()}break;
     case 'addWarm':if(s&&s.items[i].warm.length<8){s.items[i].warm.push({w:'',r:'',done:false});saveSession(s.id);rerender()}break;
@@ -1080,6 +1132,13 @@ app.addEventListener('click',e=>{
     case 'dayToggle':{const id=b.dataset.day;if(progOpen.has(id))progOpen.delete(id);else progOpen.add(id);rerender();break}
     case 'expandAll':p.days.forEach(d=>progOpen.add(d.id));rerender();break;
     case 'collapseAll':progOpen.clear();rerender();break;
+    case 'progNew':view.newProg=view.newProg?null:{name:'',from:'blank'};rerender();break;
+    case 'progCreate':{const nm=(document.getElementById('npname')||{}).value||'',fr=(document.getElementById('npfrom')||{}).value||'blank';
+      if(!nm.trim()){toast('Give the programme a name');break}
+      if(progList().some(x=>norm(x.name)===norm(nm))){toast('You already have a programme with that name');break}
+      view.newProg=null;createProgram(nm,fr);rerender();toast('Switched to '+nm.trim());break}
+    case 'progDel':{if(progList().length<2)break;const gone=S.active,nm=progName(),next=progList().find(x=>x.id!==gone);
+      switchProgram(next.id);delete S.programs[gone];saveLocal();rerender();toast('Deleted '+nm+'. Now on '+next.name);break}
     case 'pweek':view.pweek=+b.dataset.n;rerender();break;
     case 'copyPrev':{const n=view.pweek;if(n>1){copyWeekTo(n-1,n);saveWeek(n,0);rerender();toast('Copied week '+(n-1)+' into week '+n)}break}
     case 'copyLater':{const n=view.pweek,list=[];for(let k=n+1;k<=p.length;k++){copyWeekTo(n,k);list.push(k)}saveWeeks(list);rerender();toast('Copied week '+n+' to weeks '+(n+1)+'–'+p.length);break}
@@ -1117,7 +1176,7 @@ app.addEventListener('click',e=>{
       {p.starts=p.starts||{};const sk=norm(d.name),w=String(d.startW||'').trim(),r=String(d.startR||'').trim(),old=p.starts[sk];
        if(w)p.starts[sk]={w,r,note:old&&old.w===w&&old.r===r?old.note:'set by you'};else delete p.starts[sk];
        p.incs=p.incs||{};const inc=String(d.incStep||'').trim().replace(',','.');if(num(inc)>0)p.incs[sk]=inc;else delete p.incs[sk];}
-      p.lib[exId]=normLib({id:exId,name:d.name.trim(),video:url,notes:d.notes,subs:subs.map(z=>({name:z.name,video:safeUrl(z.video),notes:z.notes||''}))});
+      p.lib[exId]=normLib({sides:!!d.sides,id:exId,name:d.name.trim(),video:url,notes:d.notes,subs:subs.map(z=>({name:z.name,video:safeUrl(z.video),notes:z.notes||''}))});
       const slot=normSlot({sid:view.sid||('q'+nid()),exId,warmup:d.warmup.trim(),sets:d.sets,reps:d.reps.trim(),rirs:d.rirs.slice(0,rirCount(d)),rest:d.rest,ss:d.ss,tech:d.tech});
       const upsert=wk=>{const arr=week(wk).days[view.dayId]||(week(wk).days[view.dayId]=[]);const k=arr.findIndex(x=>x.sid===slot.sid);if(k>=0)arr[k]=clone(slot);else arr.push(clone(slot))};
       const list=[n];upsert(n);
@@ -1173,7 +1232,7 @@ app.addEventListener('input',e=>{
     const s=S.sessions[view.id];if(!s)return;touch(s);
     if(f==='note')s.note=t.value.slice(0,3000);
     else if(f==='rating'){const it=s.items[+t.dataset.i];if(!it)return;setRating(it,t,+t.value)}
-    else{const it=s.items[+t.dataset.i];if(!it)return;const st=(t.dataset.kind==='warm'?it.warm:it.sets)[+t.dataset.j];if(!st)return;st[f]=t.value.trim().slice(0,12);
+    else{const it=s.items[+t.dataset.i];if(!it)return;const st=(t.dataset.kind==='warm'?it.warm:it.sets)[+t.dataset.j];if(!st)return;if(f==='rl'||f==='rr'){st[f==='rl'?'L':'R']=t.value.trim().slice(0,12);st.r=sideMin(st)}else st[f]=t.value.trim().slice(0,12);
       const el=document.getElementById('cmp-'+t.dataset.i+'-'+t.dataset.j);
       if(el&&t.dataset.kind!=='warm'){const last=prevFor(perfName(it),s,it.sid);el.innerHTML=cmpHTML(st,last&&last.sets[+t.dataset.j])}
       const dc=document.getElementById('drop-'+t.dataset.i);if(dc)dc.innerHTML=dropHTML(it)}
@@ -1181,12 +1240,14 @@ app.addEventListener('input',e=>{
   }else if(view.name==='program'){
     if(f==='dayName'){const d=findDay(t.dataset.day);if(d){d.name=t.value.slice(0,40);saveProgram()}}
     else if(f==='restore')view.restoreText=t.value;
+    else if(f==='progName'){const v=t.value.trim();if(v&&S.programs[S.active]){S.programs[S.active].name=v.slice(0,60);saveLocal()}}
     else if(f==='incDef'){const v=t.value.trim().replace(',','.');S.program.incDefaults=S.program.incDefaults||Object.assign({},INC_DEF);if(num(v)>0){S.program.incDefaults[t.dataset.k]=v;saveProgram()}}
   }else if(view.name==='exercise'){
     const d=view.draft;
     if(f==='subName'||f==='subVideo'||f==='subNotes'){const z=d.subs[+t.dataset.k];if(z)z[{subName:'name',subVideo:'video',subNotes:'notes'}[f]]=t.value}
     else if(f==='rirSet')d.rirs[+t.dataset.k]=t.value;
     else if(f==='later')d.later=t.checked;
+    else if(f==='sides')d.sides=t.checked;
     else if(f==='libId'){
       d.libId=t.value;libToDraft(d,d.libId==='new'?null:d.libId);
       if(!view.sid&&d.libId!=='new'){const sl=latestSlotFor(d.libId,view.week);if(sl){d.warmup=sl.warmup;d.sets=String(sl.sets);d.reps=sl.reps;d.rirs=sl.rirs.slice();d.rest=sl.rest?String(sl.rest):'';d.ss=sl.ss||'';d.tech=sl.tech||''}}

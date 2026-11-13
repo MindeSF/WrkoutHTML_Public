@@ -260,6 +260,12 @@ button.status{background:none;border:0;font-family:inherit;cursor:pointer;paddin
 .ratebtn{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:0;color:var(--text);font:inherit;font-size:14px;padding:6px 0;cursor:pointer;min-height:44px}
 .ratebtn .rv{font:600 15px system-ui;color:var(--muted)}
 
+.lr{display:grid;grid-template-columns:1fr 1fr;gap:4px;min-width:0}
+.lr input{min-width:0;width:100%;padding-left:2px;padding-right:2px}
+.progbar{display:flex;gap:8px;align-items:center;margin:0 0 12px}
+.progsel{flex:1;min-width:0;margin:0}
+.progsel select{margin:0;width:100%}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* palette */
 :root{--accent:#A3B4A2;--accentInk:#2D4739;--warn:#F4B886;--teal:#38686A;--green:#2D4739;--ctl:#797D81}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accentInk)}
@@ -302,6 +308,6 @@ button.status{background:none;border:0;font-family:inherit;cursor:pointer;paddin
   <button data-tab="program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Program</button>
 </nav>
 <div id="toast"></div>
-<script src="app.js?v=8e4694fc97"></script>
+<script src="app.js?v=3351dacfc0"></script>
 </body>
 </html>
