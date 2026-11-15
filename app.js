@@ -620,7 +620,7 @@ function settingsHTML(){
   if(S.program.days.length)h+='<div class="row other mt" style="flex-wrap:nowrap"><input class="field" id="tplname" placeholder="Template name" maxlength="60" autocomplete="off" value="'+esc(tpls.length?'':DEFAULT_TEMPLATE)+'" style="margin:0;flex:1;min-width:0"><button class="btn sm" data-act="tplSave">Save current plan</button></div><p class="sub" style="margin:8px 0 0">Loading a template replaces the plan for all weeks. Your history is kept.</p>';
   h+='</div>';
   {const dfl=p.incDefaults||INC_DEF;
-   h+='<div class="sect">Rest timer</div><div class="card"><div class="setrow"><div><div>Alert when rest is over</div><div class="sub">Also works with the screen locked. The screen stays on during workouts anyway.</div></div><button class="btn sm'+(alertsOn()?' primary':'')+'" data-act="restAlerts" aria-pressed="'+alertsOn()+'">'+(alertsOn()?'On':'Off')+'</button></div></div>';
+   h+='<div class="sect">Rest timer</div><div class="card"><div class="setrow"><div><div>Alert when rest is over</div><div class="sub">Sends a phone notification at the end of every rest, even with the app open, so a paired watch buzzes too. It stays until you dismiss it.</div></div><button class="btn sm'+(alertsOn()?' primary':'')+'" data-act="restAlerts" aria-pressed="'+alertsOn()+'">'+(alertsOn()?'On':'Off')+'</button></div></div>';
   h+='<div class="sect">Weight steps</div><div class="card"><p class="sub" style="margin-top:0">The smallest jump your gym allows. Used to suggest your next weight when you hit the top of the rep range. Override any single exercise by tapping it above.</p><div class="incgrid">'+Object.keys(INC_DEF).map(k=>'<label class="rirf"><span>'+INC_LABEL[k]+'</span><input data-in="incDef" data-k="'+k+'" inputmode="decimal" value="'+esc(dfl[k])+'" maxlength="8" autocomplete="off" aria-label="'+INC_LABEL[k]+' step in '+esc(p.unit)+'"></label>').join('')+'</div></div>';}
   h+='<div class="sect" id="ghsect">GitHub backup</div><div class="card">'+ghCardHTML()+'</div>';
   h+='<div class="sect">Backup</div><div class="card"><p class="sub" style="margin-top:0">Everything is saved on this phone. Save a backup file every week or two (it goes to your Downloads) so your history is safe if the phone is reset.</p><div class="exf" style="margin-top:0"><button class="btn sm primary" data-act="saveBackupFile">Save backup file</button><label class="btn sm">Load backup file<input type="file" accept=".json,application/json,text/plain" data-in="bkfile" hidden></label></div><div class="exf"><button class="btn sm ghost" data-act="copyBackup">Copy backup</button><button class="btn sm" data-act="showRestore">'+(view.restore?'Hide paste':'Paste a backup…')+'</button></div>';
@@ -1311,8 +1311,8 @@ let restNote=0;
 function scheduleRestAlert(sec,label){
   clearTimeout(restNote);if(!alertsOn())return;
   restNote=setTimeout(()=>{
-    if(document.visibilityState==='visible')return;   // the in-app bar and vibration already cover this
-    navigator.serviceWorker.ready.then(r=>r.showNotification('Rest over',{body:'Next set: '+label,tag:'rest',renotify:true,vibrate:[300,120,300],icon:'icon-192.png',badge:'icon-192.png'})).catch(()=>{});
+    // always notify, even with the app open, so a paired watch buzzes too; stays until dismissed
+    navigator.serviceWorker.ready.then(r=>r.showNotification('Rest over',{body:'Next set: '+label,tag:'rest',renotify:true,requireInteraction:true,silent:false,vibrate:[300,120,300],timestamp:Date.now(),icon:'icon-192.png',badge:'icon-192.png'})).catch(()=>{});
   },sec*1000);
 }
 async function toggleRestAlerts(){
