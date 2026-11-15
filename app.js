@@ -36,7 +36,7 @@ function loadTemplate(t){
 function defProgram(){return{v:2,unit:'kg',length:12,days:[],lib:{},cycle:{num:1,week:1},cycles:{}}}
 const RATE=['Not rated','Too easy','Easy','Just right','Hard','Too difficult'];
 const perfName=it=>it.swap||it.name;
-const normSets=a=>(Array.isArray(a)?a:[]).filter(Boolean).slice(0,20).map(z=>{const o={w:String(z.w==null?'':z.w).slice(0,12),r:String(z.r==null?'':z.r).slice(0,12),done:!!z.done};if(z.L||z.R){o.L=String(z.L||'').slice(0,12);o.R=String(z.R||'').slice(0,12)}return o});
+const normSets=a=>(Array.isArray(a)?a:[]).filter(Boolean).slice(0,20).map(z=>{const o={w:String(z.w==null?'':z.w).slice(0,12),r:String(z.r==null?'':z.r).slice(0,12),done:!!z.done};if(+z.t>0)o.t=+z.t;if(z.L||z.R){o.L=String(z.L||'').slice(0,12);o.R=String(z.R||'').slice(0,12)}return o});
 // the weaker side is what counts for progress
 function sideReps(t){const m=String(t||'').match(/\d+(\s*-\s*\d+)?/);return m?m[0].replace(/\s+/g,''):''}
 function sideMin(st){const a=parseInt(st.L),b=parseInt(st.R);return a>=0&&b>=0?String(Math.min(a,b)):a>=0?String(a):b>=0?String(b):''}
@@ -74,7 +74,7 @@ function migrateLegacy(p){
 }
 function normSession(x,id){
   if(!x||typeof x!=='object')return null;
-  const s={id:String(id||x.id||('s'+nid())),cycle:Math.max(1,parseInt(x.cycle)||1),week:Math.max(1,parseInt(x.week)||1),dayId:String(x.dayId||''),dayName:String(x.dayName||'Workout'),prog:String(x.prog||'').slice(0,40),date:+x.date||Date.now(),finished:!!x.finished,note:String(x.note||'').slice(0,3000),items:[]};
+  const s={id:String(id||x.id||('s'+nid())),cycle:Math.max(1,parseInt(x.cycle)||1),week:Math.max(1,parseInt(x.week)||1),dayId:String(x.dayId||''),dayName:String(x.dayName||'Workout'),prog:String(x.prog||'').slice(0,40),date:+x.date||Date.now(),finished:!!x.finished,end:+x.end||0,note:String(x.note||'').slice(0,3000),items:[]};
   if(Array.isArray(x.items))s.items=x.items.filter(Boolean).slice(0,40).map(it=>({exId:String(it.exId||''),sid:String(it.sid||''),name:String(it.name||'Exercise'),warmup:String(it.warmup||''),planSets:parseInt(it.planSets)||0,reps:String(it.reps||''),target:String(it.target||''),rest:Math.max(0,parseInt(it.rest)||0),ss:String(it.ss||'').slice(0,10),tech:String(it.tech||'').slice(0,60),video:String(it.video||''),subs:normSubs(it.subs),rirs:normRirs(it.rirs),swap:String(it.swap||'').slice(0,80),swapVideo:String(it.swapVideo||'').slice(0,600),rating:clamp(parseInt(it.rating)||0,0,5),sides:!!it.sides,warm:normSets(it.warm),sets:normSets(it.sets)}));
   return s;
 }
@@ -327,7 +327,7 @@ async function syncWake(){
   }catch(e){wakeLock=null}
 }
 document.addEventListener('visibilitychange',syncWake);
-function render(){setTimeout(syncWake,0);
+function render(){setTimeout(syncWake,0);if(['program','history','stats'].includes(view.name))setTimeout(()=>garminLoad(false),0);
   const f={home:vHome,workout:vWorkout,history:vHistory,stats:vStats,program:vProgram,exercise:vExercise,exhist:vExHist}[view.name]||vHome;
   app.innerHTML=f();
   const back=view.back&&view.back.name;
@@ -486,7 +486,7 @@ function vWorkout(){
   if(!s||deleted.has(s.id))return top('Workout',true)+'<div class="card sub">This workout isn\'t available any more.</div>';
   const u=S.program.unit;
   let h=top(s.dayName,true);
-  h+='<div class="meta"><span class="sub">'+fmtDate(s.date)+'</span><span class="row"><span class="pill">Cycle '+s.cycle+'</span><button class="btn sm icon" data-act="sweek" data-d="-1" aria-label="Earlier week"'+(s.week<=1?' disabled':'')+'>−</button><span class="pill">Week '+s.week+'</span><button class="btn sm icon" data-act="sweek" data-d="1" aria-label="Later week"'+(s.week>=S.program.length?' disabled':'')+'>+</button></span>'+(s.finished?'<span class="badge">Done</span>':'')+'</div>';
+  h+='<div class="meta"><span class="sub">'+fmtDate(s.date)+(s.finished?(durOf(s)?' · ⏱ '+fmtDur(durOf(s)):''):(s.draft?'':' · ⏱ <span id="elapsed">'+fmtDur(Date.now()-s.date)+'</span>'))+'</span><span class="row"><span class="pill">Cycle '+s.cycle+'</span><button class="btn sm icon" data-act="sweek" data-d="-1" aria-label="Earlier week"'+(s.week<=1?' disabled':'')+'>−</button><span class="pill">Week '+s.week+'</span><button class="btn sm icon" data-act="sweek" data-d="1" aria-label="Later week"'+(s.week>=S.program.length?' disabled':'')+'>+</button></span>'+(s.finished?'<span class="badge">Done</span>':'')+'</div>';
   if(!s.items.length)h+='<div class="card sub">No exercises in this workout.</div>';
   s.items.forEach((it,i)=>{
     const lx=libEx(it.exId);
@@ -561,7 +561,7 @@ function vHistory(){
     const g='Cycle '+s.cycle+' · Week '+s.week;
     if(g!==grp){grp=g;h+='<div class="wk">'+g+'</div>'}
     let done=0,total=0;s.items.forEach(it=>{total+=it.sets.length;done+=it.sets.filter(x=>x.done).length});
-    h+='<button class="card day" data-act="open" data-id="'+esc(s.id)+'"><div><h2>'+esc(s.dayName)+'</h2><div class="sub">'+(progList().length>1&&S.programs[s.prog]?esc(S.programs[s.prog].name)+' · ':'')+fmtDate(s.date)+' · '+done+'/'+total+' sets done</div></div>'+(s.finished?'<span class="chev">›</span>':'<span class="badge">In progress</span>')+'</button>';
+    h+='<button class="card day" data-act="open" data-id="'+esc(s.id)+'"><div><h2>'+esc(s.dayName)+'</h2><div class="sub">'+(progList().length>1&&S.programs[s.prog]?esc(S.programs[s.prog].name)+' · ':'')+fmtDate(s.date)+' · '+done+'/'+total+' sets done'+(durOf(s)?' · '+fmtDur(durOf(s)):'')+(GST&&GST.uploaded&&GST.uploaded[s.id]?' · Garmin ✓':'')+'</div></div>'+(s.finished?'<span class="chev">›</span>':'<span class="badge">In progress</span>')+'</button>';
   }
   return h;
 }
@@ -623,6 +623,7 @@ function settingsHTML(){
    h+='<div class="sect">Rest timer</div><div class="card"><div class="setrow"><div><div>Alert when rest is over</div><div class="sub">Sends a phone notification at the end of every rest, even with the app open, so a paired watch buzzes too. It stays until you dismiss it.</div></div><button class="btn sm'+(alertsOn()?' primary':'')+'" data-act="restAlerts" aria-pressed="'+alertsOn()+'">'+(alertsOn()?'On':'Off')+'</button></div></div>';
   h+='<div class="sect">Weight steps</div><div class="card"><p class="sub" style="margin-top:0">The smallest jump your gym allows. Used to suggest your next weight when you hit the top of the rep range. Override any single exercise by tapping it above.</p><div class="incgrid">'+Object.keys(INC_DEF).map(k=>'<label class="rirf"><span>'+INC_LABEL[k]+'</span><input data-in="incDef" data-k="'+k+'" inputmode="decimal" value="'+esc(dfl[k])+'" maxlength="8" autocomplete="off" aria-label="'+INC_LABEL[k]+' step in '+esc(p.unit)+'"></label>').join('')+'</div></div>';}
   h+='<div class="sect" id="ghsect">GitHub backup</div><div class="card">'+ghCardHTML()+'</div>';
+  h+='<div class="sect">Garmin</div><div class="card" id="garmin">'+garminCardHTML()+'</div>';
   h+='<div class="sect">Backup</div><div class="card"><p class="sub" style="margin-top:0">Everything is saved on this phone. Save a backup file every week or two (it goes to your Downloads) so your history is safe if the phone is reset.</p><div class="exf" style="margin-top:0"><button class="btn sm primary" data-act="saveBackupFile">Save backup file</button><label class="btn sm">Load backup file<input type="file" accept=".json,application/json,text/plain" data-in="bkfile" hidden></label></div><div class="exf"><button class="btn sm ghost" data-act="copyBackup">Copy backup</button><button class="btn sm" data-act="showRestore">'+(view.restore?'Hide paste':'Paste a backup…')+'</button></div>';
   if(view.backupText)h+='<textarea class="mono mt" readonly rows="5">'+esc(view.backupText)+'</textarea><p class="sub">Couldn\'t copy automatically. Select all of the text above and copy it.</p>';
   if(view.restore)h+='<textarea class="mono mt" data-in="restore" rows="5" placeholder="Paste your backup here">'+esc(view.restoreText||'')+'</textarea><button class="btn sm primary mt" data-act="doRestore" data-confirm>Restore this backup</button>';
@@ -747,8 +748,17 @@ function vStats(){
   h+='<div class="tile"><div class="k">Full weeks</div><div class="v">'+st.full+' <small>/ '+st.counted+'</small></div>'+(pv?delta(st.full,pv.full,vs):'<div class="d">every workout done</div>')+'</div>';
   h+='<div class="tile"><div class="k">Missed weeks</div><div class="v">'+st.missed+'</div>'+(pv?delta(st.missed,pv.missed,{...vs,lowerBetter:true}):'<div class="d">no workouts at all</div>')+'</div>';
   h+='<div class="tile"><div class="k">Working sets</div><div class="v">'+fmtNum(st.sets,0)+'</div>'+(pv?delta(st.sets,pv.sets,vs):'<div class="d">'+fmtNum(st.reps,0)+' reps</div>')+'</div>';
+  const durList=st=>progSess().filter(s=>s.cycle===st.c&&s.finished&&(!st.upto||s.week<=st.upto)).sort((a,b)=>a.date-b.date).map(s=>({s,d:durOf(s)})).filter(x=>x.d);
+  const tNow=durList({c}),tPrev=prevNum?durList({c:prevNum,upto:st.current?st.reach:null}):[];
+  const avg=a=>a.length?a.reduce((x,y)=>x+y.d,0)/a.length:0,tot=a=>a.reduce((x,y)=>x+y.d,0);
+  h+='<div class="tile"><div class="k">Avg workout</div><div class="v">'+(tNow.length?Math.round(avg(tNow)/60000)+' <small>min</small>':'–')+'</div>'+(tPrev.length&&tNow.length?'<div class="d">'+Math.round(avg(tPrev)/60000)+' min in cycle '+prevNum+'</div>':'<div class="d">'+tNow.length+' timed workout'+(tNow.length===1?'':'s')+'</div>')+'</div>';
+  h+='<div class="tile"><div class="k">Time training</div><div class="v">'+(tNow.length?fmtNum(tot(tNow)/3600000,1)+' <small>h</small>':'–')+'</div><div class="d">first set to finish</div></div>';
   h+='<div class="tile"><div class="k">Volume lifted</div><div class="v">'+fmtBig(st.vol)+' <small>'+p.unit+'</small></div>'+(pv?delta(st.vol,pv.vol,{...vs,big:true}):'<div class="d">weight × reps</div>')+'</div>';
   h+='</div>';
+  if(tNow.length){const mx=Math.max(...tNow.map(x=>x.d)),rows=tNow.slice(-12).reverse();
+    h+='<div class="card"><h3>Workout time</h3><div class="sub" style="margin-bottom:6px">From your first logged set to Finish workout'+(tNow.length>12?' · latest 12':'')+'</div>';
+    rows.forEach(x=>{h+='<div class="rbar tm" title="'+esc(fmtDate(x.s.date))+'"><span>'+esc(x.s.dayName)+' · W'+x.s.week+'</span><div class="tr"><i style="width:'+(x.d/mx*100)+'%"></i></div><span class="n">'+Math.round(x.d/60000)+' min</span></div>'});
+    h+='</div>'}
   // week-by-week bars (single series: share of planned workouts done)
   h+='<div class="card"><h3>Workouts each week</h3><div class="sub">Share of that week\'s planned workouts you finished</div><div class="bars" role="list">';
   st.weeks.forEach(w=>{
@@ -896,11 +906,12 @@ async function ghBackup(manual){
     let sha;
     const g=await gh(ghFile()+'?ref=main');
     if(g.ok)sha=(await g.json()).sha;else if(g.status!==404)throw new Error(g.status);
-    const body={message:'Workout Log backup '+new Date().toISOString().slice(0,16).replace('T',' '),content:b64(backupJSON())};
+    const due=!!GH.garminDue;
+    const body={message:'Workout Log backup '+new Date().toISOString().slice(0,16).replace('T',' ')+(due?' [garmin]':''),content:b64(backupJSON())};
     if(sha)body.sha=sha;
     const r=await gh(ghFile(),{method:'PUT',body:JSON.stringify(body)});
     if(!r.ok)throw new Error(r.status);
-    GH.last=Date.now();GH.pending=false;GH.err='';ghSave();
+    GH.last=Date.now();GH.pending=false;GH.err='';if(due){GH.garminDue=false;[90,180].forEach(x=>setTimeout(()=>garminLoad(true),x*1000))}ghSave();
     if(manual)toast('Backed up to GitHub ✓');
   }catch(e){
     GH.pending=true;GH.err=String(e&&e.message||e);ghSave();
@@ -945,6 +956,55 @@ function ghStatus(){
   }
   if(GH.last)return'<span class="dot ok"></span>Backed up '+esc(fmtDate(GH.last))+' at '+new Date(GH.last).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
   return'<span class="dot"></span>Not backed up yet';
+}
+/* ----- workout time ----- */
+const durOf=s=>{if(!s||!s.finished)return 0;const up=GST&&GST.uploaded&&GST.uploaded[s.id];const d=(s.end||(up&&+up.end)||0)-s.date;return d>=60000&&d<=5*3600000?d:0};
+const fmtDur=ms=>{const m=Math.max(0,Math.round(ms/60000));return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min'};
+setInterval(()=>{const el=document.getElementById('elapsed');if(!el||view.name!=='workout')return;const s=S.sessions[view.id];if(s&&!s.finished&&!s.draft)el.textContent=fmtDur(Date.now()-s.date)},20000);
+
+/* ----- Garmin: the private repository's job sends finished workouts and writes garmin/state.json ----- */
+let GST=null,gstAt=0,gstBusy=false;
+const gDec=c=>{try{return JSON.parse(decodeURIComponent(escape(atob(String(c).replace(/\s/g,'')))))}catch(e){return null}};
+async function garminLoad(force){
+  if(!ghOn()||gstBusy||!navigator.onLine)return;
+  if(!force&&Date.now()-gstAt<60000)return;
+  gstBusy=true;const before=JSON.stringify(GST);
+  try{const r=await gh('/contents/garmin/state.json?ref=main');
+    if(r.ok){const j=await r.json();GST=gDec(j.content)||GST}else if(r.status===404)GST={none:true};
+    gstAt=Date.now();
+    const up=GST&&GST.uploaded;   // workouts logged before the app kept a finish time take it from what was sent to Garmin
+    if(up)for(const id in up){const s=S.sessions[id],u=up[id];if(s&&s.finished&&!s.end&&+u.end>s.date){s.end=+u.end;saveSession(s.id)}}
+  }catch(e){}
+  gstBusy=false;
+  if(JSON.stringify(GST)!==before){const el=document.getElementById('garmin');if(el)el.innerHTML=garminCardHTML();if(['history','stats','workout'].includes(view.name))softRender()}
+}
+function garminCardHTML(){
+  if(!ghOn())return'<p class="sub" style="margin:0">Connect the GitHub backup above first. Finished workouts are then sent to Garmin Connect from your private repository.</p>';
+  if(!GST)return'<div class="ghs"><span class="dot busy"></span>'+(navigator.onLine?'Checking…':'No signal. Status shows when you are online.')+'</div>';
+  const secrets='https://github.com/'+GH.repo+'/settings/secrets/actions',st=GST.status||{},up=GST.uploaded||{},n=Object.keys(up).length;
+  const wait=sessList().filter(s=>s.finished&&!up[s.id]).length;
+  let h='';
+  if(st.busy)h+='<div class="ghs"><span class="dot busy"></span>Talking to Garmin… this takes about a minute</div>';
+  else if(GST.none||st.kind==='setup')h+='<div class="ghs"><span class="dot warn"></span>Not set up yet</div><p class="sub" style="margin:6px 0 10px">Add GARMIN_EMAIL and GARMIN_PASSWORD as secrets in '+esc(GH.repo)+'.</p>';
+  else if(st.ok)h+='<div class="ghs"><span class="dot ok"></span>Connected to Garmin</div><p class="sub" style="margin:6px 0 10px">'+n+' workout'+(n===1?'':'s')+' sent'+(GST.last?' · last: '+esc(GST.last.title)+', '+esc(fmtDate(GST.last.date)):'')+'. Each workout goes over a minute or two after you finish it, once you have signal.</p>';
+  else h+='<div class="ghs"><span class="dot warn"></span>Not sending to Garmin</div><p class="sub" style="margin:6px 0 10px">'+esc(st.msg||'Something went wrong.')+'</p>';
+  if(wait&&!st.busy)h+='<p class="sub" style="margin:0 0 10px">'+wait+' finished workout'+(wait===1?'':'s')+' waiting to send.</p>';
+  const btns=[];
+  if(!st.busy&&!GST.none&&st.kind!=='setup'){if(!st.ok)btns.push('<button class="btn sm primary" data-act="garminRe" data-login="1">Reconnect</button>');else if(wait)btns.push('<button class="btn sm primary" data-act="garminRe">Send now</button>')}
+  if(GST.none||st.kind==='setup'||st.kind==='password')btns.push('<a class="btn sm" href="'+secrets+'" target="_blank" rel="noopener">'+(st.kind==='password'?'Update password on GitHub':'Open GitHub secrets')+'</a>');
+  if(btns.length)h+='<div class="exf" style="margin-top:0">'+btns.join('')+'</div>';
+  return h;
+}
+async function garminRequest(login){
+  if(!navigator.onLine){toast('No signal. Try again when you are online');return}
+  try{let sha;const g=await gh('/contents/garmin/reconnect.json?ref=main');if(g.ok)sha=(await g.json()).sha;
+    const body={message:(login?'Garmin reconnect':'Garmin send now')+' [garmin]',content:b64(JSON.stringify({at:Date.now(),login:!!login}))};if(sha)body.sha=sha;
+    const r=await gh('/contents/garmin/reconnect.json',{method:'PUT',body:JSON.stringify(body)});if(!r.ok)throw new Error(r.status);
+    GST=Object.assign({},GST,{status:Object.assign({},GST&&GST.status,{busy:true})});
+    const el=document.getElementById('garmin');if(el)el.innerHTML=garminCardHTML();
+    toast(login?'Signing in to Garmin again…':'Sending to Garmin…');
+    [50,100,160,240].forEach(x=>setTimeout(()=>garminLoad(true),x*1000));
+  }catch(e){toast('Could not reach GitHub ('+(e&&e.message||e)+')')}
 }
 function ghCardHTML(){
   if(!ghOn())return'<p class="sub" style="margin-top:0">Back up automatically to your private GitHub repository whenever you have signal. At the gym with no signal, it waits and backs up next time you are online.</p>'+
@@ -1090,7 +1150,7 @@ app.addEventListener('click',e=>{
     case 'done':{
       if(!s)break;const it=s.items[i];if(!it)break;
       const warm=b.dataset.kind==='warm',arr=warm?it.warm:it.sets,st=arr[j];if(!st)break;
-      st.done=!st.done;
+      st.done=!st.done;if(st.done)st.t=Date.now();else delete st.t;
       if(st.done){
         const last=prevFor(perfName(it),s,it.sid),ls=last&&(warm?last.warm:last.sets)[j];
         {const sg=warm?null:suggestFor(it,last);if(!st.w){if(sg&&(sg.dir==='up'||sg.dir==='down'))st.w=fmtW(sg.w);else if(ls&&ls.w)st.w=ls.w}}
@@ -1127,7 +1187,7 @@ app.addEventListener('click',e=>{
       if(!v){toast('Type the exercise you’re doing instead');if(inp)inp.focus();break}
       it.swap=norm(v)===norm(it.name)?'':v;it.swapVideo='';view.swapOpen=null;saveSession(s.id,0);rerender();toast('Swapped to '+v+' for today');break;
     }
-    case 'finish':if(s){s.finished=true;saveSession(s.id,0);setTimeout(()=>ghBackup(false),50);stopRest();toast('Workout saved 💪');go({name:'home'})}break;
+    case 'finish':if(s){s.finished=true;s.end=Date.now();GH.garminDue=true;ghSave();saveSession(s.id,0);setTimeout(()=>ghBackup(false),50);stopRest();toast('Workout saved 💪');go({name:'home'})}break;
     case 'delSession':if(s){
       const id=s.id;deleted.add(id);delete S.sessions[id];
       const w=W['s:'+id];if(w&&w.t){clearTimeout(w.t);w.t=null}
@@ -1208,6 +1268,7 @@ app.addEventListener('click',e=>{
     case 'tplDel':{const t=S.templates[b.dataset.id];if(!t)break;delete S.templates[t.id];saveLocal();rerender();toast('Deleted "'+t.name+'"');break}
     case 'ghGo':go({name:'program'});{const el=document.getElementById('ghsect');if(el)el.scrollIntoView({block:'start'})}break;
     case 'restAlerts':toggleRestAlerts();break;
+    case 'garminRe':garminRequest(!!b.dataset.login);break;
     case 'ghConnect':ghConnect();break;
     case 'ghNow':ghBackup(true);break;
     case 'ghRestore':ghRestore();break;
