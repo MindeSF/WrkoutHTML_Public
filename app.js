@@ -1097,10 +1097,16 @@ function suggestFor(it,last){
       while(k>1&&predAt(top+k*step,bestR)<lo)k--;
       return{dir:'up',w:top+k*step,step};
     }
-    const a=cost(top+step),jump=Math.max(bestR+1,Math.ceil((floorR+30*a)/(1-a)-1e-9));   // reps here that make the next step realistic
+    // reps here that make the next step realistic, capped at 1.5x the target and never more than 30:
+    // past that, go up anyway and accept fewer reps at first, then build back to the target
+    const a=cost(top+step),cap=Math.max(hi,Math.min(Math.ceil(hi*1.5),30));
+    const jump=Math.min(cap,Math.ceil((floorR+30*a)/(1-a)-1e-9));
+    if(bestR>=jump)return{dir:'up',w:top+step,step};
     return{dir:'reps',w:top,aim:Math.min(bestR+1,jump),jump,step};
   }
   if(bestR>=floorR)return{dir:'hold',w:top,aim:bestR<lo?lo:hi,step};
+  // under the target after going up (e.g. 12 reps on a 20-rep slot): stay and work up, don't bounce back down
+  if(bestR>=Math.ceil(lo*0.6))return{dir:'hold',w:top,aim:lo,step};
   const met=sets.filter(x=>num(x.w)<top&&R(x)>=lo).map(x=>num(x.w));
   let w=met.length?Math.max(...met):0;
   if(step>0){const k=Math.min(-1,Math.ceil((E/(1+mid/30)-top)/step-1e-9));w=Math.max(w,top+k*step)}

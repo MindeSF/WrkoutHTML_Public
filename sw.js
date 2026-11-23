@@ -1,7 +1,7 @@
 // Workout Log offline support. VERSION changes automatically with the app code.
-const VERSION='v3-157cd1f922';
+const VERSION='v3-9e4103323f';
 const CACHE='workout-log-'+VERSION;
-const SHELL=['./','index.html','app.js?v=157cd1f922','manifest.webmanifest','icon-192.png','icon-512.png','fonts/BebasNeue-Regular.woff2'];
+const SHELL=['./','index.html','app.js?v=9e4103323f','manifest.webmanifest','icon-192.png','icon-512.png','fonts/BebasNeue-Regular.woff2'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 async function tellUpdated(){await new Promise(r=>setTimeout(r,1500));(await self.clients.matchAll({type:'window',includeUncontrolled:true})).forEach(c=>c.postMessage('workout-log-updated'))}
