@@ -503,7 +503,7 @@ function vWorkout(){
     h+='<div class="tgt">'+itemPills(it)+'</div>';
     if(nOpen)h+=notesHTML(nt);
     if(last&&last.start){}
-    else if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+(sug?(sug.dir==='up'?' · <b class="up">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↑</b>':sug.dir==='down'?' · <b class="dn">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↓</b>':' · stay at '+fmtW(sug.w)+' '+esc(S.program.unit)):'')+'</div>';
+    else if(last)h+='<div class="last">Last time · <b>Week '+last.week+'</b>'+(last.cycle!==s.cycle?' (cycle '+last.cycle+')':'')+' · '+fmtDate(last.date)+(last.rating?' · felt <b class="r'+last.rating+'">'+RATE[last.rating]+'</b>':'')+(sug?(sug.dir==='up'?' · <b class="up">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↑</b>':sug.dir==='down'?' · <b class="dn">Try '+fmtW(sug.w)+' '+esc(S.program.unit)+' ↓</b>':sug.dir==='reps'?' · stay at '+fmtW(sug.w)+' '+esc(S.program.unit)+', <b class="up">aim for '+sug.aim+'+ reps</b>'+(sug.jump?' <span class="sub">(go up at '+sug.jump+')</span>':''):' · stay at '+fmtW(sug.w)+' '+esc(S.program.unit)+', aim for '+sug.aim):'')+'</div>';
     else h+='<div class="last">First time doing this one. Next time you\'ll see these numbers under each set.</div>';
     if(warmCount(it.warmup))h+='<div class="warmline">Warm-up <b>'+esc(it.warmup)+' set'+(it.warmup.trim()==='1'?'':'s')+'</b> first, then your working sets</div>';
     h+='<div class="sets"><div class="h">Set</div><div class="h">'+u+'</div>'+(it.sides?'<div class="h lr lrh"><span>L</span><span>R</span></div>':'<div class="h">Reps</div>')+'<div class="h">RIR</div><div class="h">Done</div>';
@@ -516,7 +516,7 @@ function vWorkout(){
       const nm=esc(pn)+(kind==='warm'?' warm-up '+(j+1):' set '+(j+1));
       return'<div class="setn'+(kind==='warm'?' wu':'')+'">'+lab+'</div>'+
         '<input class="'+dc+'" inputmode="decimal" enterkeyhint="next" autocomplete="off" data-in="w" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.w)+'" placeholder="'+esc(kind!=='warm'&&sug&&(sug.dir==='up'||sug.dir==='down')?fmtW(sug.w):(ls.w||''))+'" aria-label="'+nm+' weight">'+
-        (kind!=='warm'&&it.sides?'<div class="lr">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="next" autocomplete="off" data-in="rl" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.L||'')+'" placeholder="'+esc(sideReps(it.reps)||ls.L||ls.r||'')+'" aria-label="'+nm+' left reps, target '+esc(it.reps||'')+'">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="rr" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.R||'')+'" placeholder="'+esc(sideReps(it.reps)||ls.R||ls.r||'')+'" aria-label="'+nm+' right reps, target '+esc(it.reps||'')+'">'+'</div>':'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(it.reps||ls.r||'')+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">')+
+        (kind!=='warm'&&it.sides?'<div class="lr">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="next" autocomplete="off" data-in="rl" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.L||'')+'" placeholder="'+esc(kind!=='warm'&&sug&&sug.dir==='reps'?sug.aim+'+':(sideReps(it.reps)||ls.L||ls.r||''))+'" aria-label="'+nm+' left reps, target '+esc(it.reps||'')+'">'+'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="rr" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.R||'')+'" placeholder="'+esc(kind!=='warm'&&sug&&sug.dir==='reps'?sug.aim+'+':(sideReps(it.reps)||ls.R||ls.r||''))+'" aria-label="'+nm+' right reps, target '+esc(it.reps||'')+'">'+'</div>':'<input class="'+dc+'" inputmode="numeric" enterkeyhint="done" autocomplete="off" data-in="r" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" value="'+esc(st.r)+'" placeholder="'+esc(kind!=='warm'&&sug&&sug.dir==='reps'?sug.aim+'+':(it.reps||ls.r||''))+'" aria-label="'+nm+' reps, target '+esc(it.reps||'')+'">')+
         '<div class="rirc'+(tr===''?' none':'')+'" aria-label="Target RIR '+esc(tr||'none')+'">'+esc(tr===''?'–':tr)+'</div>'+
         '<button class="chk'+(st.done?' on':'')+(kind==='warm'?' wu':'')+'" data-act="done" data-kind="'+kind+'" data-i="'+i+'" data-j="'+j+'" aria-pressed="'+st.done+'" aria-label="Mark '+nm+' done">✓</button>';
     };
@@ -909,12 +909,18 @@ async function ghBackup(manual){
     const due=!!GH.garminDue;
     const body={message:'Workout Log backup '+new Date().toISOString().slice(0,16).replace('T',' ')+(due?' [garmin]':''),content:b64(backupJSON())};
     if(sha)body.sha=sha;
-    const r=await gh(ghFile(),{method:'PUT',body:JSON.stringify(body)});
+    let r=await gh(ghFile(),{method:'PUT',body:JSON.stringify(body)});
+    for(let a=0;a<2&&!r.ok&&(r.status===409||r.status===422||r.status===429||r.status>=500);a++){
+      await new Promise(f=>setTimeout(f,2000*(a+1)));
+      const g2=await gh(ghFile()+'?ref=main');if(g2.ok)body.sha=(await g2.json()).sha;
+      r=await gh(ghFile(),{method:'PUT',body:JSON.stringify(body)});
+    }
     if(!r.ok)throw new Error(r.status);
     GH.last=Date.now();GH.pending=false;GH.err='';if(due){GH.garminDue=false;[90,180].forEach(x=>setTimeout(()=>garminLoad(true),x*1000))}ghSave();
     if(manual)toast('Backed up to GitHub ✓');
   }catch(e){
     GH.pending=true;GH.err=String(e&&e.message||e);ghSave();
+    if(!ghRealErr()&&navigator.onLine){clearTimeout(ghTimer);ghTimer=setTimeout(()=>ghBackup(false),30000)}   // brief hiccup: try again soon
     if(manual)toast(ghErrText());
   }
   ghBusy=false;refreshGh();
@@ -1015,13 +1021,14 @@ function ghCardHTML(){
     '<div class="exf" style="margin-top:0"><button class="btn sm primary" data-act="ghNow">Back up now</button><button class="btn sm" data-act="ghRestore" data-confirm>Restore from GitHub</button><button class="btn sm ghost danger" data-act="ghOff" data-confirm>Disconnect</button></div>';
 }
 // compact live status for the top-right corner of every screen
-const ghRealErr=()=>/^\d+$/.test(String(GH.err||''));   // GitHub answered with an error (bad key, no access); not just "no signal"
+const ghRealErr=()=>/^(401|403|404)$/.test(String(GH.err||''));   // GitHub answered with an error (bad key, no access); not just "no signal"
 function ghTopStatus(){
   if(!ghOn())return'<span class="dot warn"></span>GitHub not connected';
   if(ghBusy)return'<span class="dot busy"></span>Backing up…';
   if(GH.pending){
     if(ghRealErr())return'<span class="dot warn"></span>Backup problem';
-    if(!navigator.onLine||GH.err)return'<span class="dot busy"></span>No signal · will back up';
+    if(!navigator.onLine)return'<span class="dot busy"></span>No signal · will back up';
+    if(GH.err)return'<span class="dot busy"></span>Backup retrying…';
     return'<span class="dot busy"></span>Backup waiting';
   }
   if(GH.last){const d=new Date(GH.last),today=d.toDateString()===new Date().toDateString();
@@ -1062,17 +1069,44 @@ const fmtW=x=>String(Math.round(x*100)/100);
 //  - work out the weight for the middle of this slot's rep range
 //  - round to a weight your gym has (your step), cautiously:
 //    beat the range on every set -> at least one step up; best set short of the range -> at least one step down
+// Smallest weight step for this exercise: your own setting, else the equipment default unless your log shows smaller jumps.
+function stepOf(name){
+  const p=S.program,own=(p.incs||{})[norm(name)];if(own)return num(own);
+  const base=stepFor(name);if(!(base>0))return 0;
+  const n=norm(name),ws=new Set();
+  for(const s of sessList())for(const it of s.items||[])if(norm(perfName(it))===n)for(const x of it.sets||[]){const w=num(x.w);if(w>0)ws.add(Math.round(w*100)/100)}
+  const a=[...ws].sort((x,y)=>x-y);let d=Infinity;for(let i=1;i<a.length;i++)d=Math.min(d,a[i]-a[i-1]);
+  return d>=0.25&&d<base-1e-9?Math.round(d*100)/100:base;
+}
+// Next time for this slot, from last time in the same slot. dir: up | down | hold (same weight, reach the target) |
+// reps (beat the target but the next step is too big a jump yet: same weight, add reps until `jump`).
 function suggestFor(it,last){
   if(!last||last.start)return null;
   const nums=String(it.reps||'').match(/\d+/g);if(!nums)return null;
-  const lo=+nums[0],hi=+nums[nums.length-1],mid=(lo+hi)/2;
-  const sets=(last.sets||[]).filter(x=>num(x.w)>0&&parseInt(x.r)>0);if(!sets.length)return null;
+  const lo=+nums[0],hi=+nums[nums.length-1],mid=(lo+hi)/2,tol=Math.max(1,Math.round(lo*0.2)),floorR=lo-tol;
+  const R=x=>parseInt(x.r),sets=(last.sets||[]).filter(x=>num(x.w)>0&&R(x)>0);if(!sets.length)return null;
   const top=Math.max(...sets.map(x=>num(x.w))),atTop=sets.filter(x=>num(x.w)===top);
-  const step=stepFor(perfName(it)),bestR=Math.max(...atTop.map(x=>parseInt(x.r)));
-  const want=Math.max(...atTop.map(x=>e1rm(x.w,x.r)))/(1+mid/30);
-  if(step>0&&atTop.every(x=>parseInt(x.r)>=hi)){const k=Math.max(1,Math.floor((want-top)/step+1e-9));return{dir:'up',w:top+k*step,step}}
-  if(step>0&&bestR<lo){const k=Math.min(-1,Math.ceil((want-top)/step-1e-9)),w=top+k*step;if(w>0)return{dir:'down',w,step}}
-  return{dir:bestR<lo?'low':'hold',w:top,step};
+  const step=stepOf(perfName(it)),bestR=Math.max(...atTop.map(R)),E=Math.max(...atTop.map(x=>e1rm(x.w,x.r)));
+  // Reps you'd likely get after going up to w. The bigger the jump relative to the weight, the more reps it costs:
+  // fitted to your own jumps (20 -> 22.5 kg bench lost 1 rep, 15 -> 20 kg lateral raise lost 8).
+  const cost=w=>{const d=w-top;return d>0?(d/w)*Math.min(1,2*d/top):0},predAt=(w,r)=>r-(30+r)*cost(w);
+  if(atTop.every(x=>R(x)>=hi)){
+    if(!(step>0))return{dir:'reps',w:top,aim:bestR+1,step};
+    if(predAt(top+step,bestR)>=floorR-1e-9){
+      let k=Math.max(1,Math.floor((E/(1+mid/30)-top)/step+1e-9));
+      while(k>1&&predAt(top+k*step,bestR)<lo)k--;
+      return{dir:'up',w:top+k*step,step};
+    }
+    const a=cost(top+step),jump=Math.max(bestR+1,Math.ceil((floorR+30*a)/(1-a)-1e-9));   // reps here that make the next step realistic
+    return{dir:'reps',w:top,aim:Math.min(bestR+1,jump),jump,step};
+  }
+  if(bestR>=floorR)return{dir:'hold',w:top,aim:bestR<lo?lo:hi,step};
+  const met=sets.filter(x=>num(x.w)<top&&R(x)>=lo).map(x=>num(x.w));
+  let w=met.length?Math.max(...met):0;
+  if(step>0){const k=Math.min(-1,Math.ceil((E/(1+mid/30)-top)/step-1e-9));w=Math.max(w,top+k*step)}
+  // a drop so big you'd blow far past the target (e.g. 15 -> 10 kg cable) is worse than staying and building reps
+  if(w>0&&w<top&&30*(E/w-1)<=hi*1.5)return{dir:'down',w,step};
+  return{dir:'hold',w:top,aim:lo,step};
 }
 // One series: best set per session as estimated 1-rep max, oldest to newest. Tap a point for the details.
 function progressChart(rows){
