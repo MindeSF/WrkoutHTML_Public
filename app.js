@@ -1196,7 +1196,8 @@ app.addEventListener('click',e=>{
         {const sg=warm?null:suggestFor(it,last);if(!st.w){if(sg&&(sg.dir==='up'||sg.dir==='down'))st.w=fmtW(sg.w);else if(ls&&ls.w)st.w=ls.w}}
         if(!warm&&it.sides){if(!st.L&&!st.R){const one=/^\d+$/.test(String(it.reps).trim())?String(it.reps).trim():'';st.L=one||(ls&&(ls.L||ls.r))||'';st.R=one||(ls&&(ls.R||ls.r))||'';st.r=sideMin(st)}}
         else if(!st.r){if(!warm&&/^\d+$/.test(String(it.reps).trim()))st.r=String(it.reps).trim();else if(ls&&ls.r)st.r=ls.r}
-        if(it.rest&&!warm)startRest(it.rest,perfName(it));
+        const more=s.items.some(x=>(x.sets||[]).some(y=>!y.done&&!String(y.r||'').trim()&&!y.L&&!y.R));
+        if(it.rest&&!warm&&more)startRest(it.rest,perfName(it));else if(!more)stopRest(true);
       }
       saveSession(s.id,300);rerender();break;
     }
@@ -1227,7 +1228,7 @@ app.addEventListener('click',e=>{
       if(!v){toast('Type the exercise you’re doing instead');if(inp)inp.focus();break}
       it.swap=norm(v)===norm(it.name)?'':v;it.swapVideo='';view.swapOpen=null;saveSession(s.id,0);rerender();toast('Swapped to '+v+' for today');break;
     }
-    case 'finish':if(s){s.finished=true;s.end=Date.now();GH.garminDue=true;ghSave();saveSession(s.id,0);setTimeout(()=>ghBackup(false),50);stopRest();toast('Workout saved 💪');go({name:'home'})}break;
+    case 'finish':if(s){s.finished=true;s.end=Date.now();GH.garminDue=true;ghSave();saveSession(s.id,0);setTimeout(()=>ghBackup(false),50);stopRest(true);toast('Workout saved 💪');go({name:'home'})}break;
     case 'delSession':if(s){
       const id=s.id;deleted.add(id);delete S.sessions[id];
       const w=W['s:'+id];if(w&&w.t){clearTimeout(w.t);w.t=null}
@@ -1427,7 +1428,7 @@ async function toggleRestAlerts(){
 function startRest(sec,label){scheduleRestAlert(sec,label);
   clearInterval(rest.iv);clearTimeout(rest.hide);
   rest.end=Date.now()+sec*1000;rest.total=sec*1000;rest.label=label;
-  rL.textContent='Rest · '+label;restEl.classList.remove('over');restEl.hidden=false;
+  rL.textContent='Rest · '+label;restEl.classList.remove('over');restEl.hidden=false;restEl.style.transform='';restEl.style.opacity='';rX.setAttribute('aria-label','Skip rest');
   rest.iv=setInterval(tick,250);tick();
 }
 function tick(){
@@ -1435,15 +1436,28 @@ function tick(){
   rT.textContent=fmtRest(Math.ceil(Math.max(0,left)/1000));
   rBar.style.width=Math.max(0,Math.min(100,100*left/rest.total))+'%';
   if(left<=0){
-    clearInterval(rest.iv);restEl.classList.add('over');rL.textContent='Rest done. Next set!';
+    clearInterval(rest.iv);restEl.classList.add('over');rL.textContent='Rest done. Next set!';rX.setAttribute('aria-label','Close');
     try{if(navigator.vibrate)navigator.vibrate([200,100,200])}catch(e){}
     rest.hide=setTimeout(stopRest,8000);
   }
 }
-function stopRest(){clearInterval(rest.iv);clearTimeout(rest.hide);clearTimeout(restNote);restEl.hidden=true}
+function stopRest(clearNote){clearInterval(rest.iv);clearTimeout(rest.hide);clearTimeout(restNote);restEl.hidden=true;restEl.classList.remove('drag');restEl.style.transform='';restEl.style.opacity='';
+  if(clearNote&&'serviceWorker' in navigator)navigator.serviceWorker.ready.then(r=>r.getNotifications({tag:'rest'})).then(ns=>ns.forEach(n=>n.close())).catch(()=>{})}
+const rX=restEl.querySelector('.rx');
+// swipe the bar sideways (or down) to close it
+let rDrag=null,rSwiped=false;
+restEl.addEventListener('pointerdown',e=>{rDrag={x:e.clientX,y:e.clientY,id:e.pointerId,dx:0,dy:0};rSwiped=false});
+restEl.addEventListener('pointermove',e=>{if(!rDrag||e.pointerId!==rDrag.id)return;rDrag.dx=e.clientX-rDrag.x;rDrag.dy=Math.max(0,e.clientY-rDrag.y);
+  if(Math.abs(rDrag.dx)>8||rDrag.dy>8){restEl.classList.add('drag');const d=Math.abs(rDrag.dx)>rDrag.dy?rDrag.dx:0;restEl.style.transform='translate('+d+'px,'+(d?0:rDrag.dy)+'px)';restEl.style.opacity=String(Math.max(.2,1-Math.max(Math.abs(rDrag.dx),rDrag.dy*2)/260))}});
+const rEnd=e=>{if(!rDrag)return;const {dx,dy}=rDrag;rDrag=null;restEl.classList.remove('drag');
+  if(Math.abs(dx)>90||dy>45){rSwiped=true;restEl.style.transform='translate('+(Math.abs(dx)>90?Math.sign(dx)*480:0)+'px,'+(Math.abs(dx)>90?0:120)+'px)';restEl.style.opacity='0';setTimeout(()=>stopRest(true),180)}
+  else{if(Math.abs(dx)>8||dy>8)rSwiped=true;restEl.style.transform='';restEl.style.opacity=''}};
+restEl.addEventListener('pointerup',rEnd);restEl.addEventListener('pointercancel',rEnd);
 restEl.addEventListener('click',e=>{
-  const b=e.target.closest('[data-rest]');if(!b)return;
-  if(b.dataset.rest==='skip')return stopRest();
+  if(rSwiped){rSwiped=false;return}
+  const b=e.target.closest('[data-rest]');
+  if(!b){if(restEl.classList.contains('over'))stopRest(true);return}   // when the rest is over, a tap anywhere closes it
+  if(b.dataset.rest==='skip')return stopRest(true);
   const left=Math.max(0,rest.end-Date.now());startRest(Math.round(left/1000)+30,rest.label);
 });
 

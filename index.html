@@ -105,6 +105,11 @@ textarea{resize:vertical}
 #tabs svg{width:22px;height:22px}
 #rest{position:fixed;left:12px;right:12px;bottom:calc(68px + env(safe-area-inset-bottom));max-width:536px;margin:0 auto;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:8px 8px 8px 14px;display:flex;align-items:center;gap:10px;z-index:6;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.5)}
 #rest[hidden]{display:none}
+#rest{touch-action:pan-y;transition:transform .2s ease,opacity .2s ease}
+#rest.drag{transition:none}
+#rest .rx{flex:none;width:44px;height:44px;margin:-4px -2px -4px 0;border:0;border-radius:10px;background:transparent;color:var(--text);font-size:20px;line-height:1;cursor:pointer}
+#rest .rx:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#rest.over .l{color:var(--text)}
 #rest .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--accent);transition:width .25s linear}
 #rest .t{font:700 30px "Bebas Neue",system-ui;min-width:62px;line-height:1}
 #rest .l{flex:1;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -303,7 +308,7 @@ button.status{background:none;border:0;font-family:inherit;cursor:pointer;paddin
 <div id="rest" hidden>
   <div class="t">0:00</div><div class="l">Rest</div>
   <button class="btn sm" data-rest="add">+30s</button>
-  <button class="btn sm ghost" data-rest="skip">Skip</button>
+  <button class="rx" data-rest="skip" aria-label="Skip rest">✕</button>
   <div class="bar"></div>
 </div>
 <nav id="tabs">
@@ -313,6 +318,6 @@ button.status{background:none;border:0;font-family:inherit;cursor:pointer;paddin
   <button data-tab="program"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Program</button>
 </nav>
 <div id="toast"></div>
-<script src="app.js?v=9e4103323f"></script>
+<script src="app.js?v=df9a57f2fb"></script>
 </body>
 </html>
