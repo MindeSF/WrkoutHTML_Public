@@ -11,7 +11,7 @@ const fmtDate=ms=>new Date(ms).toLocaleDateString(undefined,{weekday:'short',day
 const fmtShort=ms=>new Date(ms).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});
 const fmtRest=s=>{s=Math.max(0,s|0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const norm=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
-const num=v=>{const x=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(x)?x:0};
+const num=v=>{const x=parseFloat(String(v==null?'':v).replace(/(\d)\s*([.,])\s*(\d)/,'$1.$3').replace(',','.'));return isFinite(x)?x:0};
 const fmtNum=(v,d)=>Number(v).toLocaleString(undefined,{maximumFractionDigits:d==null?1:d});
 function fmtBig(v){v=Math.round(v);if(v>=1e6)return fmtNum(v/1e6,2)+'M';if(v>=1e4)return fmtNum(v/1e3,1)+'k';return fmtNum(v,0)}
 function safeUrl(u){u=String(u||'').trim();if(!u)return'';if(!/^https?:\/\//i.test(u))u='https://'+u;try{const x=new URL(u);return(x.protocol==='https:'||x.protocol==='http:')&&x.hostname.includes('.')?x.href:''}catch(e){return''}}
@@ -457,8 +457,8 @@ function dropHTML(it){
   if(r>0&&min&&r<min){base=w*(1+r/30)/(1+min/30);short=true}
   const drops=[];let cur=base;
   for(let k=0;k<d.count;k++){cur=cur*(1-d.pct);drops.push(cur)}
-  const first=roundLoad(drops[0]),eff=Math.round((1-drops[0]/w)*100);
-  let h='<b>Drop set calculator</b><div class="drops">'+drops.map((x,k)=>'<span>Drop '+(k+1)+' <b>≈ '+fmtNum(roundLoad(x),1)+' '+esc(u)+'</b></span>').join('')+'</div>';
+  const first=roundFor(perfName(it),drops[0]),eff=Math.round((1-drops[0]/w)*100);
+  let h='<b>Drop set calculator</b><div class="drops">'+drops.map((x,k)=>'<span>Drop '+(k+1)+' <b>≈ '+fmtNum(roundFor(perfName(it),x),2)+' '+esc(u)+'</b></span>').join('')+'</div>';
   if(short)h+='<span class="sub">'+r+' rep'+(r===1?'':'s')+' (target '+esc(it.reps)+') → bigger first drop, ~'+eff+'% off</span>';
   return h;
 }
@@ -621,7 +621,9 @@ function settingsHTML(){
   h+='</div>';
   {const dfl=p.incDefaults||INC_DEF;
    h+='<div class="sect">Rest timer</div><div class="card"><div class="setrow"><div><div>Alert when rest is over</div><div class="sub">Sends a phone notification at the end of every rest, even with the app open, so a paired watch buzzes too. It stays until you dismiss it.</div></div><button class="btn sm'+(alertsOn()?' primary':'')+'" data-act="restAlerts" aria-pressed="'+alertsOn()+'">'+(alertsOn()?'On':'Off')+'</button></div></div>';
-  h+='<div class="sect">Weight steps</div><div class="card"><p class="sub" style="margin-top:0">The smallest jump your gym allows. Used to suggest your next weight when you hit the top of the rep range. Override any single exercise by tapping it above.</p><div class="incgrid">'+Object.keys(INC_DEF).map(k=>'<label class="rirf"><span>'+INC_LABEL[k]+'</span><input data-in="incDef" data-k="'+k+'" inputmode="decimal" value="'+esc(dfl[k])+'" maxlength="8" autocomplete="off" aria-label="'+INC_LABEL[k]+' step in '+esc(p.unit)+'"></label>').join('')+'</div></div>';}
+  h+='<div class="sect">Weight steps</div><div class="card"><p class="sub" style="margin-top:0">The smallest jump your gym allows. Used to suggest your next weight when you hit the top of the rep range. Override any single exercise by tapping it above.</p><div class="incgrid">'+Object.keys(INC_DEF).filter(k=>k!=='db').map(k=>'<label class="rirf"><span>'+INC_LABEL[k]+'</span><input data-in="incDef" data-k="'+k+'" inputmode="decimal" value="'+esc(dfl[k])+'" maxlength="8" autocomplete="off" aria-label="'+INC_LABEL[k]+' step in '+esc(p.unit)+'"></label>').join('')+'</div>'+
+   '<label class="lbl" style="margin:12px 0 0">Dumbbells your gym has ('+esc(p.unit)+')<input data-in="dbRack" value="'+esc(dfl.dbRack||DB_RACK)+'" maxlength="160" autocomplete="off" spellcheck="false"></label>'+
+   '<p class="sub" style="margin:6px 0 0">Ranges and single weights, e.g. <i>15-50 by 2.5, 6, 8</i>. Now: '+esc(parseRack(dfl.dbRack||DB_RACK).map(fmtW).join(', '))+'</p></div>';}
   h+='<div class="sect" id="ghsect">GitHub backup</div><div class="card">'+ghCardHTML()+'</div>';
   h+='<div class="sect">Garmin</div><div class="card" id="garmin">'+garminCardHTML()+'</div>';
   h+='<div class="sect">Backup</div><div class="card"><p class="sub" style="margin-top:0">Everything is saved on this phone. Save a backup file every week or two (it goes to your Downloads) so your history is safe if the phone is reset.</p><div class="exf" style="margin-top:0"><button class="btn sm primary" data-act="saveBackupFile">Save backup file</button><label class="btn sm">Load backup file<input type="file" accept=".json,application/json,text/plain" data-in="bkfile" hidden></label></div><div class="exf"><button class="btn sm ghost" data-act="copyBackup">Copy backup</button><button class="btn sm" data-act="showRestore">'+(view.restore?'Hide paste':'Paste a backup…')+'</button></div>';
@@ -1048,13 +1050,31 @@ function normStarts(m){const o={};if(m&&typeof m==='object')Object.keys(m).slice
 // What to compare against: your last time doing it (any week, any run), otherwise its starting point
 const INC_DEF={machine:'5',db:'2',plate:'0.25'};
 const INC_LABEL={machine:'Cable & machine',db:'Dumbbell',plate:'Barbell & plates'};
+const DB_RACK='2.5-12.5 by 2.5, 6, 8, 9, 15-50 by 2.5';
+// "2.5-12.5 by 2.5, 6, 8, 9, 15-50 by 2.5" -> [2.5,5,6,7.5,8,9,10,12.5,15,17.5,...,50]
+function parseRack(txt){
+  const out=new Set();
+  String(txt||'').split(/[;,]/).forEach(part=>{
+    const m=part.replace(/kg|lb/gi,'').trim().match(/^(\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(\d+(?:\.\d+)?)(?:\s*(?:by|every|step)\s*(\d+(?:\.\d+)?))?$/i);
+    if(m){const a=+m[1],b=+m[2],s=+(m[3]||2.5);if(s>0&&b>=a&&(b-a)/s<=400)for(let x=a;x<=b+1e-9;x+=s)out.add(Math.round(x*100)/100);return}
+    const v=num(part);if(v>0&&/^\s*\d+(?:\.\d+)?\s*$/.test(part.replace(/kg|lb/gi,'')))out.add(Math.round(v*100)/100);
+  });
+  return[...out].sort((a,b)=>a-b);
+}
+// The weights you can pick for this exercise, or null when it moves in plain steps.
+function rackFor(name){
+  const p=S.program;if((p.incs||{})[norm(name)])return null;
+  if(equipOf(name)!=='db')return null;
+  const r=parseRack((p.incDefaults||{}).dbRack||DB_RACK);return r.length>1?r:null;
+}
+function roundFor(name,x){const r=rackFor(name);if(!r)return roundLoad(x);return r.reduce((b,v)=>Math.abs(v-x)<Math.abs(b-x)?v:b,r[0])}
 function normIncs(m){const o={};if(m&&typeof m==='object')Object.keys(m).slice(0,300).forEach(k=>{const v=String(m[k]||'').trim().replace(',','.');if(num(v)>0)o[norm(k)]=v.slice(0,8)});return o}
-function normIncDefaults(m){const o=Object.assign({},INC_DEF);if(m&&typeof m==='object')for(const k in INC_DEF){const v=String(m[k]||'').trim().replace(',','.');if(num(v)>0)o[k]=v.slice(0,8)}return o}
+function normIncDefaults(m){const o=Object.assign({},INC_DEF);if(m&&typeof m==='object'){for(const k in INC_DEF){const v=String(m[k]||'').trim().replace(',','.');if(num(v)>0)o[k]=v.slice(0,8)}if(typeof m.dbRack==='string'&&m.dbRack.trim())o.dbRack=m.dbRack.trim().slice(0,160)}return o}
 // Which kind of equipment an exercise uses, from its name. Bodyweight moves get no weight step.
 function equipOf(name){
   const n=String(name||'').toLowerCase();
   if(/\b(pull-up|chin-up|nordic|sissy squat|dip)\b/.test(n))return'bw';
-  if(/\bdb\b|dumbbell/.test(n))return'db';
+  if(/\bdb\b|dumbbell/.test(n)||(/hammer curl/.test(n)&&!/cable|rope|machine/.test(n)))return'db';
   if(/barbell|ez-bar|smith|hack squat|leg press|t-bar|deadlift|\brdl\b|plate|hyperextension/.test(n))return'plate';
   return'machine';
 }
@@ -1087,21 +1107,23 @@ function suggestFor(it,last){
   const R=x=>parseInt(x.r),sets=(last.sets||[]).filter(x=>num(x.w)>0&&R(x)>0);if(!sets.length)return null;
   const top=Math.max(...sets.map(x=>num(x.w))),atTop=sets.filter(x=>num(x.w)===top);
   const step=stepOf(perfName(it)),bestR=Math.max(...atTop.map(R)),E=Math.max(...atTop.map(x=>e1rm(x.w,x.r)));
+  const lad=rackFor(perfName(it)),above=lad?lad.filter(x=>x>top+1e-9):null,want=E/(1+mid/30);
+  const U=k=>lad?(above.length?above[Math.min(k,above.length)-1]:0):(step>0?top+k*step:0);   // k-th weight up
   // Reps you'd likely get after going up to w. The bigger the jump relative to the weight, the more reps it costs:
   // fitted to your own jumps (20 -> 22.5 kg bench lost 1 rep, 15 -> 20 kg lateral raise lost 8).
   const cost=w=>{const d=w-top;return d>0?(d/w)*Math.min(1,2*d/top):0},predAt=(w,r)=>r-(30+r)*cost(w);
   if(atTop.every(x=>R(x)>=hi)){
-    if(!(step>0))return{dir:'reps',w:top,aim:bestR+1,step};
-    if(predAt(top+step,bestR)>=floorR-1e-9){
-      let k=Math.max(1,Math.floor((E/(1+mid/30)-top)/step+1e-9));
-      while(k>1&&predAt(top+k*step,bestR)<lo)k--;
-      return{dir:'up',w:top+k*step,step};
+    if(!(U(1)>0))return{dir:'reps',w:top,aim:bestR+1,step};
+    if(predAt(U(1),bestR)>=floorR-1e-9){
+      let k=lad?Math.max(1,above.filter(x=>x<=want+1e-9).length):Math.max(1,Math.floor((want-top)/step+1e-9));
+      while(k>1&&predAt(U(k),bestR)<lo)k--;
+      return{dir:'up',w:U(k),step};
     }
     // reps here that make the next step realistic, capped at 1.5x the target and never more than 30:
     // past that, go up anyway and accept fewer reps at first, then build back to the target
-    const a=cost(top+step),cap=Math.max(hi,Math.min(Math.ceil(hi*1.5),30));
+    const a=cost(U(1)),cap=Math.max(hi,Math.min(Math.ceil(hi*1.5),30));
     const jump=Math.min(cap,Math.ceil((floorR+30*a)/(1-a)-1e-9));
-    if(bestR>=jump)return{dir:'up',w:top+step,step};
+    if(bestR>=jump)return{dir:'up',w:U(1),step};
     return{dir:'reps',w:top,aim:Math.min(bestR+1,jump),jump,step};
   }
   if(bestR>=floorR)return{dir:'hold',w:top,aim:bestR<lo?lo:hi,step};
@@ -1109,7 +1131,8 @@ function suggestFor(it,last){
   if(bestR>=Math.ceil(lo*0.6))return{dir:'hold',w:top,aim:lo,step};
   const met=sets.filter(x=>num(x.w)<top&&R(x)>=lo).map(x=>num(x.w));
   let w=met.length?Math.max(...met):0;
-  if(step>0){const k=Math.min(-1,Math.ceil((E/(1+mid/30)-top)/step-1e-9));w=Math.max(w,top+k*step)}
+  if(lad){const b=lad.filter(x=>x<top-1e-9),c=b.filter(x=>x>=want-1e-9);w=Math.max(w,c.length?c[0]:(b.length?b[b.length-1]:0))}
+  else if(step>0){const k=Math.min(-1,Math.ceil((want-top)/step-1e-9));w=Math.max(w,top+k*step)}
   // a drop so big you'd blow far past the target (e.g. 15 -> 10 kg cable) is worse than staying and building reps
   if(w>0&&w<top&&30*(E/w-1)<=hi*1.5)return{dir:'down',w,step};
   return{dir:'hold',w:top,aim:lo,step};
@@ -1350,6 +1373,7 @@ app.addEventListener('input',e=>{
     if(f==='dayName'){const d=findDay(t.dataset.day);if(d){d.name=t.value.slice(0,40);saveProgram()}}
     else if(f==='restore')view.restoreText=t.value;
     else if(f==='progName'){const v=t.value.trim();if(v&&S.programs[S.active]){S.programs[S.active].name=v.slice(0,60);saveLocal()}}
+    else if(f==='dbRack'){const v=t.value.trim();S.program.incDefaults=Object.assign({},INC_DEF,S.program.incDefaults||{});if(parseRack(v).length>1){S.program.incDefaults.dbRack=v.slice(0,160);saveProgram()}}
     else if(f==='incDef'){const v=t.value.trim().replace(',','.');S.program.incDefaults=S.program.incDefaults||Object.assign({},INC_DEF);if(num(v)>0){S.program.incDefaults[t.dataset.k]=v;saveProgram()}}
   }else if(view.name==='exercise'){
     const d=view.draft;
