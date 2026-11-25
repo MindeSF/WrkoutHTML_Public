@@ -973,6 +973,20 @@ setInterval(()=>{const el=document.getElementById('elapsed');if(!el||view.name!=
 /* ----- Garmin: the private repository's job sends finished workouts and writes garmin/state.json ----- */
 let GST=null,gstAt=0,gstBusy=false;
 const gDec=c=>{try{return JSON.parse(decodeURIComponent(escape(atob(String(c).replace(/\s/g,'')))))}catch(e){return null}};
+let fixBusy=false;
+async function fixesLoad(){
+  if(!ghOn()||fixBusy||!navigator.onLine)return;fixBusy=true;
+  try{const r=await gh('/contents/fixes.json?ref=main');if(!r.ok)return;
+    const f=gDec((await r.json()).content);let n=0;const touched=new Set();
+    for(const fx of (f&&f.fixes)||[])for(const c of fx.sets||[]){
+      const s=S.sessions[c.s],it=s&&s.items[c.i],st=it&&(it[c.kind||'sets']||[])[c.j];
+      if(st&&String(st.w).trim()===String(c.from)&&c.to!=null){st.w=String(c.to);n++;touched.add(s.id)}
+    }
+    if(n){touched.forEach(id=>saveSession(id,0));softRender();toast('Updated '+n+' logged set'+(n===1?'':'s')+' from GitHub')}
+  }catch(e){}finally{fixBusy=false}
+}
+window.addEventListener('online',()=>setTimeout(fixesLoad,3000));
+setTimeout(fixesLoad,4000);
 async function garminLoad(force){
   if(!ghOn()||gstBusy||!navigator.onLine)return;
   if(!force&&Date.now()-gstAt<60000)return;
